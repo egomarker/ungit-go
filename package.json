@@ -1,0 +1,71 @@
+{
+  "name": "ungit-go",
+  "productName": "Ungit-Go",
+  "version": "1.0.2",
+  "private": true,
+  "description": "A Go port of Ungit for a smaller runtime memory footprint, with dark/light themes and additional fixes.",
+  "author": "Egomarker",
+  "contributors": [
+    "Fredrik Nor\u00e9n and the Ungit contributors (upstream project)"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/egomarker/ungit-go.git"
+  },
+  "homepage": "https://github.com/egomarker/ungit-go",
+  "bugs": {
+    "url": "https://github.com/egomarker/ungit-go/issues"
+  },
+  "scripts": {
+    "start": "go run ./cmd/ungit-go",
+    "build": "go build -trimpath -o ./ungit-go ./cmd/ungit-go",
+    "test": "go test ./...",
+    "test:race": "go test -race ./...",
+    "test:graph-race": "node scripts/test-graph-load-race.js",
+    "vet": "go vet ./...",
+    "build:frontend": "node ./scripts/build.js",
+    "lint:frontend": "eslint public/source components scripts/build.js eslint.config.mjs",
+    "format:frontend": "eslint public/source components scripts/build.js eslint.config.mjs --fix",
+    "watch:frontend": "nodemon -C --exec \"npm run build:frontend\" -e js,ts,less,html -w public/source -w public/less -w components/ -i \"*.bundle.js\""
+  },
+  "dependencies": {
+    "@primer/octicons": "~19.28.1",
+    "blueimp-md5": "~2.19.0",
+    "bootstrap": "~3.4.1",
+    "crossroads": "~0.12.2",
+    "diff2html": "~3.4.56",
+    "dnd-page-scroll": "0.0.4",
+    "hasher": "~1.2.0",
+    "jquery": "~3.7.1",
+    "jquery-ui": "~1.14.2",
+    "just-detect-adblock": "~1.1.0",
+    "knockout": "~3.5.3",
+    "lodash": "~4.18.1",
+    "moment": "~2.30.1",
+    "nprogress": "~0.2.0",
+    "signals": "~1.0.0",
+    "snapsvg": "~0.5.1",
+    "winston": "~3.19.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "~10.0.1",
+    "@homer0/prettier-plugin-jsdoc": "~12.0.0",
+    "browserify": "~17.0.1",
+    "eslint": "~10.5.0",
+    "eslint-config-prettier": "~10.1.8",
+    "eslint-plugin-n": "~18.1.0",
+    "eslint-plugin-prettier": "~5.5.6",
+    "exorcist": "~2.0.0",
+    "globals": "~17.7.0",
+    "less": "~4.6.7",
+    "mkdirp": "~3.0.1",
+    "nodemon": "~3.1.14",
+    "prettier": "~3.8.4",
+    "tsify": "~5.0.4",
+    "typescript": "~6.0.3"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,9 @@
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Preserve inherited/generated third-party formatting without whitespace noise.
+public/vendor/** -whitespace
+public/js/ungit.js -whitespace
+components/**/*.bundle.js -whitespace
+public/fonts/** -whitespace

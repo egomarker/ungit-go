@@ -1,0 +1,251 @@
+@import 'public/less/variables.less';
+
+.staging {
+  background: @staging-background;
+  box-shadow: 0 -1px 15px @app-shadow-color;
+  color: @staging-text;
+  z-index: 5;
+  position: relative;
+
+  .form-control {
+    &:disabled {
+      background-color: @staging-disabled-background;
+    }
+  }
+
+  textarea.commit-body {
+    resize: vertical;
+  }
+
+  .arrow {
+    border-top-color: @staging-background;
+    left: (@log-width-small + 45px);
+    bottom: -30px;
+  }
+
+  .commitnpush.disabled {
+    pointer-events: none;
+    opacity: 0.5;
+  }
+
+  .file-area {
+    position: relative;
+  }
+
+  .validationError {
+    display: none;
+    color: @validation-error-color;
+    padding: 0.25em;
+  }
+
+  &:hover .validationError {
+    display: inline-block;
+  }
+
+  .diffContainer {
+    margin-top: 0;
+    border-radius: 3px;
+    background: @staging-diff-background;
+  }
+
+  .discard {
+    background: transparent;
+    color: @staging-action-color;
+    border-radius: 3px;
+    padding: 3px;
+    padding-left: 5px;
+    padding-right: 5px;
+    cursor: pointer;
+
+    &:focus,
+    &:hover {
+      background: @staging-discard-hover-background;
+      color: @staging-action-hover-color;
+    }
+  }
+
+  .ignore {
+    background: transparent;
+    color: @staging-action-color;
+    border-radius: 3px;
+    padding: 3px;
+    padding-left: 5px;
+    padding-right: 5px;
+    cursor: pointer;
+    font-weight: bold;
+
+    &:focus,
+    &:hover {
+      background: @staging-ignore-hover-background;
+      color: @staging-action-hover-color;
+    }
+  }
+
+  .patch {
+    background: @staging-patch-background;
+    color: @staging-action-hover-color;
+    border-radius: 3px;
+    padding: 3px;
+    padding-left: 5px;
+    padding-right: 5px;
+    cursor: pointer;
+    font-weight: bold;
+
+    &:focus,
+    &:hover {
+      background: @staging-patch-background;
+      color: @staging-action-hover-color;
+    }
+  }
+
+  .d2h-code-line-prefix input[type='checkbox'] {
+    margin: 0;
+    margin-right: -5px;
+    vertical-align: sub;
+  }
+
+  .files {
+    position: relative;
+
+    .file {
+      padding: 0.3em;
+
+      &.showingDiffs {
+        .name {
+          background: @staging-active-file-background;
+          color: @staging-active-file-color;
+          border-bottom-left-radius: 0;
+          border-bottom-right-radius: 0;
+        }
+      }
+
+      .checkmark {
+        span {
+          top: 5px;
+        }
+      }
+
+      .name {
+        background: transparent;
+        font-size: 1.3em;
+        cursor: pointer;
+        padding: 3px;
+        border: 0;
+        border-radius: 3px;
+        color: @staging-file-color;
+      }
+
+      .new,
+      .deleted,
+      .conflict,
+      .markresolved,
+      .launchmergetool {
+        padding: 3px;
+        padding-left: 5px;
+        padding-right: 5px;
+      }
+
+      .new,
+      .additions {
+        color: @staging-addition-color;
+        vertical-align: middle;
+      }
+
+      .deleted,
+      .deletions {
+        color: @staging-deletion-color;
+        vertical-align: middle;
+      }
+
+      .conflict {
+        color: @staging-conflict-color;
+
+        .explanation {
+          display: none;
+        }
+
+        &:hover {
+          .explanation {
+            display: inline;
+          }
+
+          .temporary {
+            display: none;
+          }
+        }
+      }
+
+      .markresolved {
+        color: @staging-conflict-color;
+        cursor: pointer;
+
+        .explanation {
+          display: none;
+        }
+
+        &:hover {
+          background: @staging-resolve-hover-background;
+          color: @staging-resolve-hover-color;
+          border-radius: 3px;
+
+          .explanation {
+            display: inline;
+          }
+        }
+      }
+
+      .launchmergetool {
+        color: @staging-mergetool-color;
+        cursor: pointer;
+
+        .explanation {
+          display: none;
+        }
+
+        &:hover {
+          background: @staging-mergetool-hover-background;
+          color: @staging-mergetool-hover-color;
+          border-radius: 3px;
+
+          .explanation {
+            display: inline;
+          }
+        }
+      }
+    }
+  }
+}
+
+@media (min-width: @screen-md-min) {
+  .staging {
+    .arrow {
+      left: (@log-width-large + 45px);
+    }
+  }
+}
+
+.commit-message-title-counter {
+  right: 20px;
+  position: absolute;
+}
+
+.amend-button {
+  padding: 0;
+
+  &:active,
+  &:focus,
+  &:hover {
+    text-decoration: none;
+  }
+}
+
+.checkmark {
+  color: @checkmark-color;
+  display: inline-block;
+  opacity: 0.3;
+  cursor: pointer;
+
+  &.checked {
+    opacity: 0.8;
+  }
+}

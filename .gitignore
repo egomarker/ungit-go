@@ -1,0 +1,26 @@
+# Go build/test output
+/ungit-go
+/ungit-go.exe
+*.test
+coverage.out
+
+# Frontend development dependencies
+node_modules/
+
+# Generated source maps are local build artifacts.
+components/**/*.bundle.js.map
+components/**/*.css.map
+public/css/*.map
+public/js/*.map
+
+# Local/editor files
+.vscode/
+.idea/
+.DS_Store
+.ungitrc
+
+# Temporary packaging/build directories
+build/
+dist/
+coverage/
+.nyc_output/

@@ -1,0 +1,199 @@
+.staging {
+  background: #f1e2e5;
+  box-shadow: 0 -1px 15px #cbd5e1;
+  color: #4f353b;
+  z-index: 5;
+  position: relative;
+}
+.staging .form-control:disabled {
+  background-color: #e1cdd1;
+}
+.staging textarea.commit-body {
+  resize: vertical;
+}
+.staging .arrow {
+  border-top-color: #f1e2e5;
+  left: 445px;
+  bottom: -30px;
+}
+.staging .commitnpush.disabled {
+  pointer-events: none;
+  opacity: 0.5;
+}
+.staging .file-area {
+  position: relative;
+}
+.staging .validationError {
+  display: none;
+  color: #a3322a;
+  padding: 0.25em;
+}
+.staging:hover .validationError {
+  display: inline-block;
+}
+.staging .diffContainer {
+  margin-top: 0;
+  border-radius: 3px;
+  background: rgba(37, 49, 61, 0.07);
+}
+.staging .discard {
+  background: transparent;
+  color: #65717d;
+  border-radius: 3px;
+  padding: 3px;
+  padding-left: 5px;
+  padding-right: 5px;
+  cursor: pointer;
+}
+.staging .discard:focus,
+.staging .discard:hover {
+  background: #25313d;
+  color: #ffffff;
+}
+.staging .ignore {
+  background: transparent;
+  color: #65717d;
+  border-radius: 3px;
+  padding: 3px;
+  padding-left: 5px;
+  padding-right: 5px;
+  cursor: pointer;
+  font-weight: bold;
+}
+.staging .ignore:focus,
+.staging .ignore:hover {
+  background: #4141c8;
+  color: #ffffff;
+}
+.staging .patch {
+  background: #237b22;
+  color: #ffffff;
+  border-radius: 3px;
+  padding: 3px;
+  padding-left: 5px;
+  padding-right: 5px;
+  cursor: pointer;
+  font-weight: bold;
+}
+.staging .patch:focus,
+.staging .patch:hover {
+  background: #237b22;
+  color: #ffffff;
+}
+.staging .d2h-code-line-prefix input[type='checkbox'] {
+  margin: 0;
+  margin-right: -5px;
+  vertical-align: sub;
+}
+.staging .files {
+  position: relative;
+}
+.staging .files .file {
+  padding: 0.3em;
+}
+.staging .files .file.showingDiffs .name {
+  background: #e2d1d5;
+  color: #25313d;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.staging .files .file .checkmark span {
+  top: 5px;
+}
+.staging .files .file .name {
+  background: transparent;
+  font-size: 1.3em;
+  cursor: pointer;
+  padding: 3px;
+  border: 0;
+  border-radius: 3px;
+  color: #3f3337;
+}
+.staging .files .file .new,
+.staging .files .file .deleted,
+.staging .files .file .conflict,
+.staging .files .file .markresolved,
+.staging .files .file .launchmergetool {
+  padding: 3px;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+.staging .files .file .new,
+.staging .files .file .additions {
+  color: #3f6f4c;
+  vertical-align: middle;
+}
+.staging .files .file .deleted,
+.staging .files .file .deletions {
+  color: #8f4040;
+  vertical-align: middle;
+}
+.staging .files .file .conflict {
+  color: #8a1679;
+}
+.staging .files .file .conflict .explanation {
+  display: none;
+}
+.staging .files .file .conflict:hover .explanation {
+  display: inline;
+}
+.staging .files .file .conflict:hover .temporary {
+  display: none;
+}
+.staging .files .file .markresolved {
+  color: #8a1679;
+  cursor: pointer;
+}
+.staging .files .file .markresolved .explanation {
+  display: none;
+}
+.staging .files .file .markresolved:hover {
+  background: #7834ad;
+  color: #ffffff;
+  border-radius: 3px;
+}
+.staging .files .file .markresolved:hover .explanation {
+  display: inline;
+}
+.staging .files .file .launchmergetool {
+  color: #71319b;
+  cursor: pointer;
+}
+.staging .files .file .launchmergetool .explanation {
+  display: none;
+}
+.staging .files .file .launchmergetool:hover {
+  background: #65308d;
+  color: #ffffff;
+  border-radius: 3px;
+}
+.staging .files .file .launchmergetool:hover .explanation {
+  display: inline;
+}
+@media (min-width: 992px) {
+  .staging .arrow {
+    left: 595px;
+  }
+}
+.commit-message-title-counter {
+  right: 20px;
+  position: absolute;
+}
+.amend-button {
+  padding: 0;
+}
+.amend-button:active,
+.amend-button:focus,
+.amend-button:hover {
+  text-decoration: none;
+}
+.checkmark {
+  color: #25313d;
+  display: inline-block;
+  opacity: 0.3;
+  cursor: pointer;
+}
+.checkmark.checked {
+  opacity: 0.8;
+}
+/*# sourceMappingURL=staging-light.css.map */

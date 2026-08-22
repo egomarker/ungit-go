@@ -1,0 +1,35 @@
+@import 'public/less/variables.less';
+
+.home {
+  .nux {
+    text-align: center;
+
+    .brand-large {
+      margin-top: 20px;
+      margin-bottom: 50px;
+      font-size: 64px;
+      font-weight: 700;
+      letter-spacing: -3px;
+      color: @text-color;
+    }
+  }
+
+  .repository {
+    position: relative;
+    min-height: 62px;
+
+    &.path-removed {
+      .list-group-item-heading {
+        color: @removed-path-color;
+      }
+    }
+
+    .arrow-icon {
+      color: @icon-muted-color;
+    }
+
+    &:hover .arrow-icon {
+      color: @icon-hover-color;
+    }
+  }
+}

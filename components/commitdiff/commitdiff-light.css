@@ -1,0 +1,40 @@
+.commitdiff {
+  width: 100%;
+}
+.commitdiff .file {
+  margin-top: 5px;
+  background: #e8eef4;
+  border-radius: 3px;
+}
+.commitdiff .file .head {
+  display: block;
+  cursor: pointer;
+  padding: 3px;
+  padding-left: 6px;
+  padding-right: 6px;
+  color: #26323e;
+  word-wrap: break-word;
+}
+.commitdiff .file .head .file-stats span:nth-of-type(1)::before {
+  content: '+';
+}
+.commitdiff .file .head .file-stats span:nth-of-type(1) {
+  color: #18753a;
+}
+.commitdiff .file .head .file-stats span:nth-of-type(2)::before {
+  content: '-';
+}
+.commitdiff .file .head .file-stats span:nth-of-type(2) {
+  color: #a3322a;
+}
+.commitdiff .file .diff {
+  background: #f3f6f8;
+}
+.commitdiff .file .diff .textDiff {
+  color: #647281;
+}
+.loadMore .btn {
+  display: block;
+  margin: 20px 20px 10px 20px;
+}
+/*# sourceMappingURL=commitdiff-light.css.map */

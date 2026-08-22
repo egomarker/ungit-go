@@ -1,0 +1,212 @@
+@import 'public/less/variables.less';
+
+.graph {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+
+  .graphLog {
+    left: 575px;
+
+    .loadAhead {
+      cursor: pointer;
+      animation: throb 1s ease alternate infinite;
+    }
+  }
+
+  @keyframes throb {
+    50% {
+      r: 20;
+    }
+
+    100% {
+      r: 18;
+    }
+  }
+
+  .nodeContainer {
+    position: absolute;
+    left: 30px;
+    top: 120px;
+    width: 100%;
+
+    .commit-container {
+      position: absolute;
+      top: -43px;
+    }
+
+    .rightSideContainer {
+      position: absolute;
+      display: flex;
+      margin-left: (@log-width-small + 40px);
+      top: -22px;
+      white-space: nowrap;
+      height: 40px;
+    }
+
+    .ref {
+      display: inline-block;
+      opacity: 0.6;
+      cursor: move;
+      margin: 7px 0 4px 0;
+      outline: none;
+      padding: 2px 5px 2px 5px;
+      border: 3px solid transparent;
+      border-radius: 10px;
+      transition: border-color 0.5s;
+      -webkit-transition: border-color 0.5s;
+
+      &.dragging.focused {
+        border-color: transparent;
+      }
+
+      &.focused {
+        border-color: @graph-ref-focus-color;
+      }
+
+      &.current {
+        font-weight: bold;
+        opacity: 1;
+        font-size: 20px;
+        margin-top: 2px;
+        margin-bottom: -2px;
+      }
+
+      &.remote {
+        color: @graph-remote-ref-color;
+      }
+
+      &.tag {
+        color: @graph-tag-ref-color;
+      }
+    }
+
+    .graphAction {
+      color: @graph-action-color;
+      cursor: pointer;
+      transition: all 0.5s ease 0.2s;
+      transition-property: opacity;
+      margin: 8px 2.5px 4px 2.5px;
+      padding: 5px 10px;
+      position: relative;
+      border-radius: 3px;
+
+      .dropmask {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      &.dimmed {
+        opacity: 0.5;
+      }
+
+      &.push {
+        background: @graph-push-background;
+      }
+
+      &.pull {
+        background: @graph-pull-background;
+      }
+
+      &.reset {
+        background: @graph-reset-background;
+      }
+
+      &.rebase {
+        background: @graph-rebase-background;
+      }
+
+      &.squash {
+        background: @graph-squash-background;
+      }
+
+      &.move {
+        background: @graph-move-background;
+      }
+
+      &.merge {
+        background: @graph-merge-background;
+      }
+
+      &.checkout {
+        background: @graph-checkout-background;
+      }
+
+      &.delete {
+        background: @graph-delete-background;
+      }
+
+      &.cherry-pick {
+        background: @graph-cherry-pick-background;
+      }
+
+      &.uncommit {
+        background: @graph-uncommit-background;
+      }
+
+      &.revert {
+        background: @graph-revert-background;
+      }
+    }
+
+    .ref-icons {
+      opacity: 1;
+      padding-top: 2px;
+      padding-bottom: 2px;
+      margin-left: 5px;
+
+      .showBranchingForm {
+        background: transparent;
+        border: 0;
+        cursor: pointer;
+        padding: 0;
+        margin: 0;
+        margin-top: 9px;
+        -webkit-text-stroke-width: 1px;
+        color: @graph-control-color;
+
+        &:hover {
+          color: @graph-control-hover-color;
+        }
+      }
+
+      .showSearchForm {
+        background: transparent;
+        border: 0;
+        cursor: pointer;
+        padding: 0;
+        margin: 0;
+        margin-top: 9px;
+        -webkit-text-stroke-width: 1px;
+        color: @graph-control-color;
+
+        &:hover {
+          color: @graph-control-hover-color;
+        }
+      }
+
+      .form-inline {
+        display: inline-block;
+      }
+
+      input.name {
+        width: 150px;
+      }
+    }
+  }
+
+  .graphFooter {
+    height: 60px;
+  }
+}
+
+.ui-autocomplete {
+  min-width: 150px;
+
+  .octicon {
+    width: 18px;
+  }
+}

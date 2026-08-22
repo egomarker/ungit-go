@@ -1,0 +1,24 @@
+.home .nux {
+  text-align: center;
+}
+.home .nux .brand-large {
+  margin-top: 20px;
+  margin-bottom: 50px;
+  font-size: 64px;
+  font-weight: 700;
+  letter-spacing: -3px;
+}
+.home .repository {
+  position: relative;
+  min-height: 62px;
+}
+.home .repository.path-removed .list-group-item-heading {
+  color: #cf5353;
+}
+.home .repository .arrow-icon {
+  color: #686868;
+}
+.home .repository:hover .arrow-icon {
+  color: #a5a5a5;
+}
+/*# sourceMappingURL=home.css.map */

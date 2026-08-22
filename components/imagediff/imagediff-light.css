@@ -1,0 +1,11 @@
+.imageDiff {
+  padding: 10px;
+  text-align: center;
+}
+.img-removed {
+  background-color: rgba(190, 24, 58, 0.12);
+}
+.img-added {
+  background-color: rgba(22, 163, 74, 0.12);
+}
+/*# sourceMappingURL=imagediff-light.css.map */

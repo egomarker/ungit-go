@@ -1,0 +1,39 @@
+<!-- ko component: header -->
+<!-- /ko -->
+
+<!-- ko if: showNoHeaderToolbar -->
+<div class="no-header-toolbar">
+  <select
+    class="form-control theme-select"
+    aria-label="Color theme"
+    title="Color theme"
+    data-bind="options: theme.options, optionsText: 'label', optionsValue: 'value', value: theme.preference"
+  ></select>
+</div>
+<!-- /ko -->
+
+<div class="app">
+  <div class="container" data-bind="shown: shown">
+    <div class="alert alert-danger" data-bind="visible: gitVersionErrorVisible">
+      <span data-bind="text: gitVersionError"></span>
+      <button type="button" class="close" data-bind="click: dismissGitVersionError">&times;</button>
+    </div>
+
+    <div class="alert alert-info" data-bind="visible: showNewVersionAvailable">
+      A new version of Ungit-Go (<span data-bind="text: latestVersion"></span>) is available.
+      Download it from <a href="https://github.com/egomarker/ungit-go/releases">Releases</a> and see
+      what's new in the <a href="https://github.com/egomarker/ungit-go/blob/main/CHANGELOG.md">changelog</a>.
+      <button type="button" class="close" data-bind="click: dismissNewVersion">&times;</button>
+    </div>
+
+  </div>
+
+  <!-- ko if: content -->
+  <div class="container-fluid" data-bind="component: content"></div>
+  <!-- /ko -->
+</div>
+
+<!-- ko if: modal -->
+<!-- ko template: { name: templateChooser, data: modal } -->
+<!-- /ko -->
+<!-- /ko -->

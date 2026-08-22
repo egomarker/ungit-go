@@ -1,0 +1,22 @@
+@import '../../node_modules/bootstrap/less/variables.less';
+
+// Build-time theme selector supplied by scripts/build.js.
+@import 'themes/@{ungit-theme}.less';
+
+// Application layout
+// --------------------------------------------------
+@log-width-small: 400px;
+@log-width-large: 550px;
+
+// Shared Bootstrap variables
+// --------------------------------------------------
+@link-hover-color: lighten(@link-color, 15%);
+@font-family-sans-serif: 'Open Sans', sans-serif;
+@font-family-monospace: 'Source Code Pro', monospace;
+@btn-default-color: @text-color;
+@navbar-default-color: @text-color;
+@navbar-default-link-color: @text-color;
+@tooltip-arrow-width: 8px;
+@modal-content-bg: @panel-bg;
+@modal-header-border-color: @list-group-border;
+@panel-default-text: @text-color;

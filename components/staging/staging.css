@@ -1,0 +1,199 @@
+.staging {
+  background: #643a44;
+  box-shadow: 0 -1px 15px #252833;
+  color: #b8a5a5;
+  z-index: 5;
+  position: relative;
+}
+.staging .form-control:disabled {
+  background-color: rgba(64, 36, 43, 0.75);
+}
+.staging textarea.commit-body {
+  resize: vertical;
+}
+.staging .arrow {
+  border-top-color: #643a44;
+  left: 445px;
+  bottom: -30px;
+}
+.staging .commitnpush.disabled {
+  pointer-events: none;
+  opacity: 0.5;
+}
+.staging .file-area {
+  position: relative;
+}
+.staging .validationError {
+  display: none;
+  color: #d6542d;
+  padding: 0.25em;
+}
+.staging:hover .validationError {
+  display: inline-block;
+}
+.staging .diffContainer {
+  margin-top: 0;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+}
+.staging .discard {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+  padding: 3px;
+  padding-left: 5px;
+  padding-right: 5px;
+  cursor: pointer;
+}
+.staging .discard:focus,
+.staging .discard:hover {
+  background: #000000;
+  color: rgba(255, 255, 255, 0.9);
+}
+.staging .ignore {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+  padding: 3px;
+  padding-left: 5px;
+  padding-right: 5px;
+  cursor: pointer;
+  font-weight: bold;
+}
+.staging .ignore:focus,
+.staging .ignore:hover {
+  background: #5555ff;
+  color: rgba(255, 255, 255, 0.9);
+}
+.staging .patch {
+  background: #279124;
+  color: rgba(255, 255, 255, 0.9);
+  border-radius: 3px;
+  padding: 3px;
+  padding-left: 5px;
+  padding-right: 5px;
+  cursor: pointer;
+  font-weight: bold;
+}
+.staging .patch:focus,
+.staging .patch:hover {
+  background: #279124;
+  color: rgba(255, 255, 255, 0.9);
+}
+.staging .d2h-code-line-prefix input[type='checkbox'] {
+  margin: 0;
+  margin-right: -5px;
+  vertical-align: sub;
+}
+.staging .files {
+  position: relative;
+}
+.staging .files .file {
+  padding: 0.3em;
+}
+.staging .files .file.showingDiffs .name {
+  background: rgba(255, 255, 255, 0.1);
+  color: #000000;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.staging .files .file .checkmark span {
+  top: 5px;
+}
+.staging .files .file .name {
+  background: transparent;
+  font-size: 1.3em;
+  cursor: pointer;
+  padding: 3px;
+  border: 0;
+  border-radius: 3px;
+  color: rgba(255, 255, 255, 0.8);
+}
+.staging .files .file .new,
+.staging .files .file .deleted,
+.staging .files .file .conflict,
+.staging .files .file .markresolved,
+.staging .files .file .launchmergetool {
+  padding: 3px;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+.staging .files .file .new,
+.staging .files .file .additions {
+  color: #949494;
+  vertical-align: middle;
+}
+.staging .files .file .deleted,
+.staging .files .file .deletions {
+  color: #7b7b7b;
+  vertical-align: middle;
+}
+.staging .files .file .conflict {
+  color: #db12c0;
+}
+.staging .files .file .conflict .explanation {
+  display: none;
+}
+.staging .files .file .conflict:hover .explanation {
+  display: inline;
+}
+.staging .files .file .conflict:hover .temporary {
+  display: none;
+}
+.staging .files .file .markresolved {
+  color: #db12c0;
+  cursor: pointer;
+}
+.staging .files .file .markresolved .explanation {
+  display: none;
+}
+.staging .files .file .markresolved:hover {
+  background: #a445ed;
+  color: #000000;
+  border-radius: 3px;
+}
+.staging .files .file .markresolved:hover .explanation {
+  display: inline;
+}
+.staging .files .file .launchmergetool {
+  color: #db55ff;
+  cursor: pointer;
+}
+.staging .files .file .launchmergetool .explanation {
+  display: none;
+}
+.staging .files .file .launchmergetool:hover {
+  background: #a477ff;
+  color: #000000;
+  border-radius: 3px;
+}
+.staging .files .file .launchmergetool:hover .explanation {
+  display: inline;
+}
+@media (min-width: 992px) {
+  .staging .arrow {
+    left: 595px;
+  }
+}
+.commit-message-title-counter {
+  right: 20px;
+  position: absolute;
+}
+.amend-button {
+  padding: 0;
+}
+.amend-button:active,
+.amend-button:focus,
+.amend-button:hover {
+  text-decoration: none;
+}
+.checkmark {
+  color: #ffffff;
+  display: inline-block;
+  opacity: 0.3;
+  cursor: pointer;
+}
+.checkmark.checked {
+  opacity: 0.8;
+}
+/*# sourceMappingURL=staging.css.map */

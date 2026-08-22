@@ -1,0 +1,51 @@
+<div class="navbar navbar-default navbar-fixed-top">
+  <a
+    class="backlink"
+    href="#/"
+    data-toggle="tooltip"
+    data-placement="bottom"
+    title="Navigate to Ungit-Go home page"
+  >
+    <span
+      class="back-icon octicon-circled"
+      data-bind="html: backIcon, css: { 'back-icon-shown': showBackButton }"
+    ></span>
+    <span class="headerBrand" aria-label="Ungit-Go">Ungit-Go</span>
+  </a>
+
+  <div class="form-container">
+    <form class="path-input-form" data-bind="submit: submitPath">
+      <input
+        class="form-control input-lg"
+        type="text"
+        data-bind="value: path, autocomplete: path"
+        placeholder="Enter path to repository"
+        aria-label="Path to repository"
+      />
+      <button
+        class="btn btn-default add-to-repolist"
+        type="button"
+        data-bind="html: addIcon, visible: showAddToRepoListButton, click: addCurrentPathToRepoList"
+        data-toggle="tooltip"
+        data-placement="bottom"
+        title="Add current git directory to Ungit-Go home page"
+      ></button>
+    </form>
+  </div>
+  <div class="toolbar">
+    <select
+      class="form-control theme-select"
+      aria-label="Color theme"
+      title="Color theme"
+      data-bind="options: theme.options, optionsText: 'label', optionsValue: 'value', value: theme.preference"
+    ></select>
+    <!-- ko component: refreshButton --><!-- /ko -->
+  </div>
+
+  <div class="arrow"></div>
+  <div class="version">
+    <span data-bind="text: currentVersion" />
+  </div>
+</div>
+
+<div class="navbarPadder"></div>

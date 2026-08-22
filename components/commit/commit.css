@@ -1,0 +1,80 @@
+.commit {
+  position: relative;
+}
+.commit.highlighted {
+  z-index: 2;
+}
+.commit.highlighted .commit-box {
+  box-shadow: 5px 5px 0 rgba(0, 0, 0, 0.2);
+  background: #4b5766;
+  left: -5px;
+}
+.commit.highlighted .commit-box .arrow {
+  border-left-color: #4b5766;
+}
+.commit.highlighted .commit-box .arrow.shadow {
+  display: block;
+}
+.commit.hover {
+  z-index: 3;
+}
+.commit.selected .details .diff-wrapper {
+  margin-bottom: 5px;
+  transition: width 0.1s, left 0.05s;
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.15);
+}
+.commit.selected .details .diff-wrapper .diff-inner {
+  box-shadow: 5px 5px 0 rgba(0, 0, 0, 0.2);
+  padding: 10px;
+  padding-top: 0;
+}
+.commit.selected .details .diff-wrapper .btn-group {
+  margin-top: 10px;
+}
+.commit .commit-box .arrow {
+  right: -30px;
+  top: 27px;
+  border-left-color: #3c4653;
+}
+.commit .commit-box .arrow.shadow {
+  display: none;
+  right: -34px;
+  top: 32px;
+  border-left-color: rgba(0, 0, 0, 0.2);
+}
+.commit .commit-box > .panel-body {
+  position: relative;
+  padding: 10px;
+  margin-bottom: 0;
+  width: 400px;
+  min-height: 85px;
+}
+.commit .commit-box > .panel-body .gravatar {
+  display: none;
+  margin-right: 10px;
+}
+.commit .commit-box > .panel-body .title {
+  font-size: 1.3em;
+  word-wrap: break-word;
+  display: block;
+}
+.commit .commit-box > .panel-body .details .body {
+  font-family: 'Source Code Pro', monospace;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  color: #8f9fa6;
+}
+.commit .commit-box > .panel-body .details .diff-wrapper {
+  margin-top: 10px;
+  background: #4b5766;
+  border-radius: 3px;
+}
+@media (min-width: 992px) {
+  .commit .commit-box > .panel-body {
+    width: 550px;
+  }
+  .commit .commit-box > .panel-body .gravatar {
+    display: block;
+  }
+}
+/*# sourceMappingURL=commit.css.map */

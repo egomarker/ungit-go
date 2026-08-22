@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script type="text/javascript">
+      ungit = {};
+    </script>
+    <script type="text/javascript" src="__ROOT_PATH__/serverdata.js"></script>
+    <script type="text/javascript">
+      (function () {
+        var preferences = ['system', 'dark', 'light'];
+        var configured = preferences.indexOf(ungit.config.theme) >= 0 ? ungit.config.theme : 'system';
+        var stored;
+        try {
+          stored = localStorage.getItem('ungit-theme');
+        } catch (e) {
+          // Local storage may be disabled; use the configured preference instead.
+        }
+        var preference = preferences.indexOf(stored) >= 0 ? stored : configured;
+        var colorScheme = window.matchMedia
+          ? window.matchMedia('(prefers-color-scheme: dark)')
+          : null;
+        var resolved = preference === 'system' ? (colorScheme && colorScheme.matches ? 'dark' : 'light') : preference;
+        window.__ungitThemePreference = preference;
+        document.documentElement.setAttribute('data-theme', resolved);
+      })();
+    </script>
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="__ROOT_PATH__/css/styles.css"
+      data-ungit-theme="dark"
+      media="not all"
+    />
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="__ROOT_PATH__/css/styles-light.css"
+      data-ungit-theme="light"
+      media="not all"
+    />
+    <script type="text/javascript">
+      document.querySelectorAll('link[data-ungit-theme]').forEach(function (stylesheet) {
+        stylesheet.media =
+          stylesheet.getAttribute('data-ungit-theme') ===
+          document.documentElement.getAttribute('data-theme')
+            ? 'all'
+            : 'not all';
+      });
+    </script>
+    <link rel="shortcut icon" href="__ROOT_PATH__/favicon.ico" />
+    <title>Ungit-Go</title>
+  </head>
+  <body>
+    <!-- ko component: content --><!-- /ko -->
+
+    <script type="text/javascript">
+      console.log('Ungit-Go version: ' + ungit.version);
+    </script>
+    <script type="text/javascript" src="__ROOT_PATH__/socket.io/socket.io.js"></script>
+    <script type="text/javascript" src="__ROOT_PATH__/js/ungit.js"></script>
+
+    <!-- ungit-plugins-placeholder -->
+
+    <script type="text/javascript">
+      require('ungit-main').start();
+    </script>
+  </body>
+</html>

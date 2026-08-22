@@ -1,0 +1,108 @@
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 100px;
+}
+.navbarPadder {
+  height: 81px;
+}
+.navbar {
+  padding-top: 13px;
+  z-index: 5;
+  max-width: 100vw;
+  box-shadow: 0 15px 15px #cbd5e1;
+  height: 81px;
+}
+.navbar .backlink {
+  margin-left: 10px;
+  margin-top: 7px;
+  position: absolute;
+  color: #65717d;
+}
+.navbar .backlink:hover {
+  text-decoration: none;
+  color: #26323e;
+}
+.navbar .backlink .back-icon {
+  -webkit-transition: opacity 0.5s ease-in-out;
+  -moz-transition: opacity 0.5s ease-in-out;
+  transition: opacity 0.5s ease-in-out;
+  opacity: 0;
+}
+.navbar .backlink .back-icon.back-icon-shown {
+  opacity: 1;
+}
+.navbar .form-container {
+  margin-left: 180px;
+  margin-right: 180px;
+}
+.navbar .form-container .path-input-form {
+  width: 100%;
+  position: relative;
+}
+.navbar .form-container .path-input-form .form-control {
+  font-size: 1.7em;
+  width: 100%;
+}
+.navbar .form-container .path-input-form .add-to-repolist {
+  position: absolute;
+  right: 4px;
+  top: 6px;
+  background: transparent;
+  border: 0;
+  opacity: 0.3;
+}
+.navbar .form-container .path-input-form .add-to-repolist:hover {
+  opacity: 0.8;
+}
+.navbar .arrow {
+  bottom: 0;
+  left: 300px;
+  border-bottom-color: #f6f8fa;
+}
+.navbar .version-and-license {
+  position: absolute;
+  right: 10px;
+  bottom: 2px;
+  font-size: 12px;
+}
+.toolbar {
+  position: absolute;
+  right: 10px;
+  top: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.toolbar .theme-select {
+  width: 92px;
+}
+@media (max-width: 640px) {
+  .navbar .form-container {
+    margin-right: 72px;
+  }
+  .toolbar .theme-select {
+    position: fixed;
+    left: calc(100vw - 102px);
+    top: calc(100vh - 44px);
+    z-index: 1000;
+    opacity: 0.65;
+  }
+  .toolbar .theme-select:focus,
+  .toolbar .theme-select:hover {
+    opacity: 1;
+  }
+}
+.headerBrand {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 25px;
+  font-weight: 700;
+  line-height: 36px;
+  letter-spacing: -1px;
+  color: inherit;
+  vertical-align: middle;
+}
+.version {
+  padding-left: 140px;
+}
+/*# sourceMappingURL=header-light.css.map */

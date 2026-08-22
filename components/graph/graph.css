@@ -1,0 +1,173 @@
+.graph {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+}
+.graph .graphLog {
+  left: 575px;
+}
+.graph .graphLog .loadAhead {
+  cursor: pointer;
+  animation: throb 1s ease alternate infinite;
+}
+@keyframes throb {
+  50% {
+    r: 20;
+  }
+  100% {
+    r: 18;
+  }
+}
+.graph .nodeContainer {
+  position: absolute;
+  left: 30px;
+  top: 120px;
+  width: 100%;
+}
+.graph .nodeContainer .commit-container {
+  position: absolute;
+  top: -43px;
+}
+.graph .nodeContainer .rightSideContainer {
+  position: absolute;
+  display: flex;
+  margin-left: 440px;
+  top: -22px;
+  white-space: nowrap;
+  height: 40px;
+}
+.graph .nodeContainer .ref {
+  display: inline-block;
+  opacity: 0.6;
+  cursor: move;
+  margin: 7px 0 4px 0;
+  outline: none;
+  padding: 2px 5px 2px 5px;
+  border: 3px solid transparent;
+  border-radius: 10px;
+  transition: border-color 0.5s;
+  -webkit-transition: border-color 0.5s;
+}
+.graph .nodeContainer .ref.dragging.focused {
+  border-color: transparent;
+}
+.graph .nodeContainer .ref.focused {
+  border-color: #ffffff;
+}
+.graph .nodeContainer .ref.current {
+  font-weight: bold;
+  opacity: 1;
+  font-size: 20px;
+  margin-top: 2px;
+  margin-bottom: -2px;
+}
+.graph .nodeContainer .ref.remote {
+  color: #5db4ff;
+}
+.graph .nodeContainer .ref.tag {
+  color: #eef266;
+}
+.graph .nodeContainer .graphAction {
+  color: #ffffff;
+  cursor: pointer;
+  transition: all 0.5s ease 0.2s;
+  transition-property: opacity;
+  margin: 8px 2.5px 4px 2.5px;
+  padding: 5px 10px;
+  position: relative;
+  border-radius: 3px;
+}
+.graph .nodeContainer .graphAction .dropmask {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+}
+.graph .nodeContainer .graphAction.dimmed {
+  opacity: 0.5;
+}
+.graph .nodeContainer .graphAction.push {
+  background: rgba(61, 139, 255, 0.9);
+}
+.graph .nodeContainer .graphAction.pull {
+  background: rgba(38, 189, 189, 0.9);
+}
+.graph .nodeContainer .graphAction.reset {
+  background: rgba(255, 129, 31, 0.9);
+}
+.graph .nodeContainer .graphAction.rebase {
+  background: rgba(65, 222, 60, 0.9);
+}
+.graph .nodeContainer .graphAction.squash {
+  background: rgba(100, 60, 222, 0.9);
+}
+.graph .nodeContainer .graphAction.move {
+  background: rgba(0, 0, 0, 0.1);
+}
+.graph .nodeContainer .graphAction.merge {
+  background: rgba(208, 135, 212, 0.9);
+}
+.graph .nodeContainer .graphAction.checkout {
+  background: rgba(205, 219, 55, 0.9);
+}
+.graph .nodeContainer .graphAction.delete {
+  background: rgba(214, 77, 56, 0.9);
+}
+.graph .nodeContainer .graphAction.cherry-pick {
+  background: rgba(110, 156, 110, 0.9);
+}
+.graph .nodeContainer .graphAction.uncommit {
+  background: rgba(158, 53, 20, 0.9);
+}
+.graph .nodeContainer .graphAction.revert {
+  background: rgba(179, 135, 43, 0.9);
+}
+.graph .nodeContainer .ref-icons {
+  opacity: 1;
+  padding-top: 2px;
+  padding-bottom: 2px;
+  margin-left: 5px;
+}
+.graph .nodeContainer .ref-icons .showBranchingForm {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+  margin-top: 9px;
+  -webkit-text-stroke-width: 1px;
+  color: rgba(255, 255, 255, 0.3);
+}
+.graph .nodeContainer .ref-icons .showBranchingForm:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+.graph .nodeContainer .ref-icons .showSearchForm {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+  margin-top: 9px;
+  -webkit-text-stroke-width: 1px;
+  color: rgba(255, 255, 255, 0.3);
+}
+.graph .nodeContainer .ref-icons .showSearchForm:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+.graph .nodeContainer .ref-icons .form-inline {
+  display: inline-block;
+}
+.graph .nodeContainer .ref-icons input.name {
+  width: 150px;
+}
+.graph .graphFooter {
+  height: 60px;
+}
+.ui-autocomplete {
+  min-width: 150px;
+}
+.ui-autocomplete .octicon {
+  width: 18px;
+}
+/*# sourceMappingURL=graph.css.map */

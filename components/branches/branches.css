@@ -1,0 +1,22 @@
+.branch .options {
+  font-size: inherit;
+  color: #333333;
+}
+.branch .options label {
+  cursor: pointer;
+  font-weight: normal;
+  margin: 0 15px 0 0;
+}
+.branch .options label:last-child {
+  margin: 0;
+}
+.branch .options input {
+  -moz-appearance: none;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+.branch .dropdown-menu.octicon {
+  width: 18px;
+}
+/*# sourceMappingURL=branches.css.map */
