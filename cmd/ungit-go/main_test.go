@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -16,8 +17,20 @@ func TestBrowserURLDefaultsToCurrentWorkingDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := browserURL(cfg, 8448)
-	if !strings.Contains(got, "#/repository?path=") || !strings.Contains(got, strings.ReplaceAll(cwd, " ", "%20")) {
+	if !strings.Contains(got, "#/repository?path=") {
 		t.Fatalf("url=%q cwd=%q", got, cwd)
+	}
+	u, err := url.Parse(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := strings.TrimPrefix(u.Fragment, "/repository?path=")
+	decoded, derr := url.QueryUnescape(raw)
+	if derr != nil {
+		t.Fatal(derr)
+	}
+	if decoded != cwd {
+		t.Fatalf("url=%q decoded path=%q want cwd=%q", got, decoded, cwd)
 	}
 }
 

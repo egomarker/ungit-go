@@ -45,6 +45,7 @@ func TestParseNodeCompatibleBooleanNegationsAndAliases(t *testing.T) {
 func TestParseRCPrecedenceAndCLIConfigOnly(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	rc := `{"port":1111,"autoFetch":false,"launchCommand":"echo %U","autoShutdownTimeout":99,"theme":"dark"}`
 	if err := os.WriteFile(filepath.Join(home, ".ungitrc"), []byte(rc), 0o644); err != nil {
 		t.Fatal(err)
@@ -96,6 +97,7 @@ func TestParseAdditionalNodeOptions(t *testing.T) {
 func TestRCForcedLaunchPathNullMeansHomeScreen(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	if err := os.WriteFile(filepath.Join(home, ".ungitrc"), []byte(`{"forcedLaunchPath":null}`), 0o644); err != nil {
 		t.Fatal(err)
 	}

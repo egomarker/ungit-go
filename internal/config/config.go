@@ -259,8 +259,8 @@ func Parse(args []string) (Config, error) {
 	}
 	cfg.RootPath = normalizeRootPath(cfg.RootPath)
 	if gitBinPath != "" {
-		clean := filepath.Clean(gitBinPath)
-		cfg.GitBinPath = &clean
+		p := gitBinPath
+		cfg.GitBinPath = &p
 	}
 	if forcedLaunchPathSet {
 		clean := forcedLaunchPath
