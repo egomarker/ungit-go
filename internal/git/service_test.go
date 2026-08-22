@@ -33,8 +33,12 @@ func TestServiceStatusLogAndRevParse(t *testing.T) {
 	cfg.LaunchBrowser = false
 	s := NewService(cfg)
 	ctx := context.Background()
+	realDir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
 	rp := s.RevParse(ctx, dir)
-	if rp.Type != "inited" || filepath.Clean(rp.GitRootPath) != filepath.Clean(dir) {
+	if rp.Type != "inited" || filepath.Clean(rp.GitRootPath) != filepath.Clean(realDir) {
 		t.Fatalf("revparse=%#v", rp)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("one\n"), 0644); err != nil {
