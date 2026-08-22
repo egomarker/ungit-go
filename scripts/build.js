@@ -59,7 +59,9 @@ const baseDir = path.join(__dirname, '..');
   b.require(path.join(publicSourceDir, 'program-events.js'), { expose: 'ungit-program-events' });
   b.require(path.join(publicSourceDir, 'storage.js'), { expose: 'ungit-storage' });
   b.require(path.join(publicSourceDir, 'theme.js'), { expose: 'ungit-theme' });
-  b.require(path.join(baseDir, 'public/source/address-parser.js'), { expose: 'ungit-address-parser' });
+  b.require(path.join(baseDir, 'public/source/address-parser.js'), {
+       expose: 'ungit-address-parser' 
+    });
   b.require('blueimp-md5', { expose: 'blueimp-md5' });
   b.require('diff2html', { expose: 'diff2html' });
   b.require('jquery', { expose: 'jquery' });
@@ -115,7 +117,6 @@ const baseDir = path.join(__dirname, '..');
       await copyToFolder(file, 'public/fonts');
     })
   );
-
 })();
 
 async function lessFile(source, destination, theme) {
