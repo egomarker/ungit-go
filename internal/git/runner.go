@@ -150,7 +150,11 @@ func (r *Runner) runOnce(ctx context.Context, c Command, args []string, operatio
 	commandID := observability.NewID("git")
 	queueStarted := time.Now()
 	commandFields := gitCommandFields(c, args, operationID, commandID)
-	if r.cfg.LogGitCommands {
+	// Repository watchers can execute several Git reads per filesystem event.
+	// Their own lifecycle/change/error events provide the useful signal, while
+	// logging every successful command rapidly floods the rotating log.
+	logRoutineLifecycle := r.cfg.LogGitCommands && observability.WatcherID(ctx) == ""
+	if logRoutineLifecycle {
 		observability.Info(ctx, "git.command.queued", "Git command queued",
 			append(commandFields, "attempt", attempt, "queue_depth", len(r.sem))...)
 	}
@@ -169,7 +173,7 @@ func (r *Runner) runOnce(ctx context.Context, c Command, args []string, operatio
 	cmdCtx, cancel := context.WithTimeout(ctx, c.Timeout)
 	defer cancel()
 	started := time.Now()
-	if r.cfg.LogGitCommands {
+	if logRoutineLifecycle {
 		observability.Info(ctx, "git.command.started", "Git command started",
 			append(commandFields,
 				"attempt", attempt,
@@ -222,7 +226,7 @@ func (r *Runner) runOnce(ctx context.Context, c Command, args []string, operatio
 	}
 
 	if err == nil || allowedError {
-		if r.cfg.LogGitCommands {
+		if logRoutineLifecycle {
 			observability.Info(ctx, "git.command.completed", "Git command completed", resultFields...)
 		}
 		return result, nil

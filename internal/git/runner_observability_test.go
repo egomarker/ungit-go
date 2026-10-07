@@ -44,6 +44,44 @@ func TestRunnerLogDoesNotLeakGitArgumentsOrOutput(t *testing.T) {
 	}
 }
 
+func TestWatcherCommandsSuppressRoutineLifecycleButKeepFailures(t *testing.T) {
+	directory := t.TempDir()
+	logging, err := observability.Start(observability.Options{
+		Directory: &directory, Level: "trace", MaxSizeMB: 1, MaxBackups: 1, Version: "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Default()
+	runner := NewRunner(cfg)
+	ctx := observability.WithWatcherID(context.Background(), "watch-test")
+	if _, err := runner.Run(ctx, Command{RepoPath: directory, Args: []string{"init", "--quiet"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runner.Run(ctx, Command{RepoPath: directory, Args: []string{"status", "--short"}}); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = runner.Run(ctx, Command{RepoPath: directory, Args: []string{"rev-parse", "missing-ref"}})
+	if err := logging.Close(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(directory, observability.LogFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, event := range []string{"git.command.queued", "git.command.started", "git.command.completed"} {
+		if strings.Contains(text, event) {
+			t.Fatalf("watcher log contains routine lifecycle event %s: %s", event, text)
+		}
+	}
+	for _, expected := range []string{"git.command.failed", "watch-test"} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("watcher log is missing %s: %s", expected, text)
+		}
+	}
+}
+
 func TestGitCommandFieldsExcludeArgumentValues(t *testing.T) {
 	const (
 		messageSecret = "commit-message-secret"
