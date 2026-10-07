@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"mime"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	gitapi "github.com/egomarker/ungit-go/internal/git"
+	"github.com/egomarker/ungit-go/internal/observability"
 )
 
 func (s *Server) registerReadAPI(mux *http.ServeMux) {
@@ -46,6 +48,8 @@ func (s *Server) withExistingPath(next http.HandlerFunc) http.HandlerFunc {
 			p = r.FormValue("path")
 		}
 		if _, err := os.Stat(p); err != nil {
+			observability.Warn(r.Context(), "api.path.invalid", "requested path does not exist",
+				append([]any{"path", p}, observability.ErrorFields(err)...)...)
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "'No such path: " + p, "errorCode": "no-such-path"})
 			return
 		}
@@ -65,12 +69,12 @@ func (s *Server) fsListDirectories(w http.ResponseWriter, r *http.Request) {
 	}
 	dir, err := filepath.Abs(term)
 	if err != nil {
-		writeError(w, err)
+		writeError(r.Context(), w, err)
 		return
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		writeError(w, err)
+		writeError(r.Context(), w, err)
 		return
 	}
 	dirs := []string{dir}
@@ -111,18 +115,18 @@ func (s *Server) quickStatus(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
 	res, err := s.git.Status(r.Context(), r.URL.Query().Get("path"), "")
-	writeResult(w, res, err)
+	writeResult(r.Context(), w, res, err)
 }
 
 func (s *Server) getGitLog(w http.ResponseWriter, r *http.Request) {
 	limit, err := gitapi.ParseInt(r.URL.Query().Get("limit"), s.cfg.NumberOfNodesPerLoad)
 	if err != nil {
-		writeError(w, err)
+		writeError(r.Context(), w, err)
 		return
 	}
 	skip, err := gitapi.ParseInt(r.URL.Query().Get("skip"), 0)
 	if err != nil {
-		writeError(w, err)
+		writeError(r.Context(), w, err)
 		return
 	}
 	res, err := s.git.Log(r.Context(), r.URL.Query().Get("path"), limit, skip, s.cfg.MaxActiveBranchSearchIteration)
@@ -130,13 +134,13 @@ func (s *Server) getGitLog(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, gitapi.LogResult{Limit: limit, Skip: skip, Nodes: []gitapi.Commit{}})
 		return
 	}
-	writeResult(w, res, err)
+	writeResult(r.Context(), w, res, err)
 }
 
 func (s *Server) getShow(w http.ResponseWriter, r *http.Request) {
 	text, err := s.git.Runner.RunText(r.Context(), r.URL.Query().Get("path"), "show", "--numstat", "-z", r.URL.Query().Get("sha1"))
 	if err != nil {
-		writeError(w, err)
+		writeError(r.Context(), w, err)
 		return
 	}
 	commits, _ := gitapi.ParseGitLog(text)
@@ -149,7 +153,7 @@ func (s *Server) getHead(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, []gitapi.Commit{})
 		return
 	}
-	writeResult(w, res, err)
+	writeResult(r.Context(), w, res, err)
 }
 
 func (s *Server) getRefs(w http.ResponseWriter, r *http.Request) {
@@ -162,7 +166,7 @@ func (s *Server) getRefs(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				// upstream Ungit deliberately ignores fetch errors here, most commonly credentials/offline failures.
-				args := append(s.credentialArgs(r.URL.Query().Get("socketId"), remote), "fetch", remote)
+				args := append(s.credentialArgs(r.Context(), r.URL.Query().Get("socketId"), remote), "fetch", remote)
 				_, _ = s.git.Runner.Run(r.Context(), gitapi.Command{RepoPath: repoPath, Args: args, Timeout: 10 * time.Minute, Env: []string{"GIT_TERMINAL_PROMPT=0"}})
 			}
 		}
@@ -174,7 +178,7 @@ func (s *Server) getRefs(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, []any{})
 			return
 		}
-		writeError(w, err)
+		writeError(r.Context(), w, err)
 		return
 	}
 	refs := []map[string]string{}
@@ -204,7 +208,7 @@ func (s *Server) getBranches(w http.ResponseWriter, r *http.Request) {
 	}
 	text, err := s.git.Runner.RunText(r.Context(), r.URL.Query().Get("path"), "branch", arg)
 	if err != nil {
-		writeError(w, err)
+		writeError(r.Context(), w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, gitapi.ParseGitBranches(text))
@@ -212,19 +216,19 @@ func (s *Server) getBranches(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getTags(w http.ResponseWriter, r *http.Request) {
 	text, err := s.git.Runner.RunText(r.Context(), r.URL.Query().Get("path"), "tag", "-l")
 	if err != nil {
-		writeError(w, err)
+		writeError(r.Context(), w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, gitapi.ParseGitTags(text))
 }
 func (s *Server) getCheckout(w http.ResponseWriter, r *http.Request) {
 	b, err := s.git.CurrentBranch(r.Context(), r.URL.Query().Get("path"))
-	writeResult(w, b, err)
+	writeResult(r.Context(), w, b, err)
 }
 func (s *Server) getRemotes(w http.ResponseWriter, r *http.Request) {
 	text, err := s.git.Runner.RunText(r.Context(), r.URL.Query().Get("path"), "remote", "-v")
 	if err != nil {
-		writeError(w, err)
+		writeError(r.Context(), w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, gitapi.ParseGitRemotes(text))
@@ -233,7 +237,7 @@ func (s *Server) getRemote(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	text, err := s.git.Runner.RunText(r.Context(), r.URL.Query().Get("path"), "config", "--get", "remote."+name+".url")
 	if err != nil {
-		writeError(w, err)
+		writeError(r.Context(), w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, parseAddress(strings.Split(text, "\n")[0]))
@@ -242,7 +246,7 @@ func (s *Server) getRemote(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getDiff(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	text, err := s.git.DiffFile(r.Context(), q.Get("path"), q.Get("file"), q.Get("oldFile"), q.Get("sha1"), q.Get("whiteSpace") == "true")
-	writeResult(w, text, err)
+	writeResult(r.Context(), w, text, err)
 }
 
 func (s *Server) getDiffImage(w http.ResponseWriter, r *http.Request) {
@@ -257,7 +261,7 @@ func (s *Server) getDiffImage(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := s.git.Runner.Run(r.Context(), gitapi.Command{RepoPath: q.Get("path"), Args: []string{"show", q.Get("version") + ":" + filename}, Stdout: w})
 	if err != nil {
-		writeError(w, err)
+		writeError(r.Context(), w, err)
 		return
 	}
 	_ = res
@@ -271,7 +275,7 @@ func (s *Server) getBaseRepoPath(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, err)
+		writeError(r.Context(), w, err)
 		return
 	}
 	p, _ := filepath.Abs(strings.TrimSpace(text))
@@ -289,7 +293,7 @@ func (s *Server) getSubmodules(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getStashes(w http.ResponseWriter, r *http.Request) {
 	text, err := s.git.Runner.RunText(r.Context(), r.URL.Query().Get("path"), "stash", "list", "--decorate=full", "--pretty=fuller", "-z", "--parents", "--numstat")
 	if err != nil {
-		writeError(w, err)
+		writeError(r.Context(), w, err)
 		return
 	}
 	commits, _ := gitapi.ParseGitLog(text)
@@ -298,7 +302,7 @@ func (s *Server) getStashes(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getGitConfig(w http.ResponseWriter, r *http.Request) {
 	text, err := s.git.Runner.RunText(r.Context(), "", "config", "--list")
 	if err != nil {
-		writeError(w, err)
+		writeError(r.Context(), w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, gitapi.ParseGitConfig(text))
@@ -310,6 +314,7 @@ func (s *Server) getGitIgnore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		logAPIError(r.Context(), "api.gitignore.read_failed", err, "repository", r.URL.Query().Get("path"))
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
@@ -318,7 +323,7 @@ func (s *Server) getGitIgnore(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getFetch(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	if _, ok := s.requireSocket(w, q.Get("socketId")); !ok {
+	if _, ok := s.requireSocket(r.Context(), w, q.Get("socketId")); !ok {
 		return
 	}
 	args := []string{"fetch"}
@@ -329,24 +334,24 @@ func (s *Server) getFetch(w http.ResponseWriter, r *http.Request) {
 	if q.Get("ref") != "" {
 		args = append(args, q.Get("ref"))
 	}
-	args = append(s.credentialArgs(q.Get("socketId"), q.Get("remote")), args...)
+	args = append(s.credentialArgs(r.Context(), q.Get("socketId"), q.Get("remote")), args...)
 	res, err := s.git.Runner.Run(r.Context(), gitapi.Command{RepoPath: q.Get("path"), Args: args, Timeout: 10 * time.Minute, Env: []string{"GIT_TERMINAL_PROMPT=0"}})
 	if err != nil {
-		writeError(w, err)
+		writeError(r.Context(), w, err)
 		return
 	}
-	writeResult(w, string(res.Stdout), nil)
+	writeResult(r.Context(), w, string(res.Stdout), nil)
 }
 
 func (s *Server) getRemoteTags(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	if _, ok := s.requireSocket(w, q.Get("socketId")); !ok {
+	if _, ok := s.requireSocket(r.Context(), w, q.Get("socketId")); !ok {
 		return
 	}
-	args := append(s.credentialArgs(q.Get("socketId"), q.Get("remote")), "ls-remote", "--tags", q.Get("remote"))
+	args := append(s.credentialArgs(r.Context(), q.Get("socketId"), q.Get("remote")), "ls-remote", "--tags", q.Get("remote"))
 	res, err := s.git.Runner.Run(r.Context(), gitapi.Command{RepoPath: q.Get("path"), Args: args, Timeout: 10 * time.Minute, Env: []string{"GIT_TERMINAL_PROMPT=0"}})
 	if err != nil {
-		writeError(w, err)
+		writeError(r.Context(), w, err)
 		return
 	}
 	out := []map[string]string{}
@@ -367,9 +372,9 @@ func (s *Server) getRemoteTags(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-func writeResult(w http.ResponseWriter, value any, err error) {
+func writeResult(ctx context.Context, w http.ResponseWriter, value any, err error) {
 	if err != nil {
-		writeError(w, err)
+		writeError(ctx, w, err)
 		return
 	}
 	if value == nil {
@@ -380,17 +385,23 @@ func writeResult(w http.ResponseWriter, value any, err error) {
 	}
 	writeJSON(w, http.StatusOK, value)
 }
-func writeError(w http.ResponseWriter, err error) {
+func writeError(ctx context.Context, w http.ResponseWriter, err error) {
 	var ge *gitapi.Error
 	if errors.As(err, &ge) {
+		logAPIError(ctx, "api.git_error", err,
+			"error_code", ge.ErrorCode,
+			"repository", ge.WorkingDirectory,
+		)
 		writeJSON(w, http.StatusBadRequest, ge)
 		return
 	}
 	var se *gitapi.SimpleError
 	if errors.As(err, &se) {
+		logAPIError(ctx, "api.operation_error", err, "error_code", se.ErrorCode)
 		writeJSON(w, http.StatusBadRequest, se)
 		return
 	}
+	logAPIError(ctx, "api.operation_error", err)
 	writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 }
 

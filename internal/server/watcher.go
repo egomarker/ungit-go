@@ -12,6 +12,7 @@ import (
 	"time"
 
 	gitapi "github.com/egomarker/ungit-go/internal/git"
+	"github.com/egomarker/ungit-go/internal/observability"
 )
 
 const watchPollInterval = 350 * time.Millisecond
@@ -71,17 +72,32 @@ func (d *eventDebouncer) Stop() {
 }
 
 func (s *Server) watchRepositoryPolling(ctx context.Context, c *realtimeClient, repoPath string, ready chan<- struct{}) {
+	started := time.Now()
+	observability.Info(ctx, "watch.polling.started", "polling repository watcher started", "repository", repoPath)
+	defer func() {
+		observability.Info(ctx, "watch.polling.stopped", "polling repository watcher stopped",
+			"repository", repoPath, "duration_ms", time.Since(started).Milliseconds(), "reason", ctx.Err())
+	}()
 	workDebounce := newEventDebouncer(func() {
+		observability.Info(ctx, "watch.working_tree.changed", "working tree change detected", "repository", repoPath)
 		s.realtime.emit(c, "working-tree-changed", map[string]string{"repository": repoPath})
 	})
 	gitDebounce := newEventDebouncer(func() {
+		observability.Info(ctx, "watch.git_directory.changed", "Git directory change detected", "repository", repoPath)
 		s.realtime.emit(c, "git-directory-changed", map[string]string{"repository": repoPath})
 	})
 	defer workDebounce.Stop()
 	defer gitDebounce.Stop()
 
-	workFP, _ := s.worktreeFingerprint(ctx, repoPath)
-	gitFP, _ := s.gitStateFingerprint(ctx, repoPath)
+	workFP, workErr := s.worktreeFingerprint(ctx, repoPath)
+	if workErr != nil {
+		observability.Error(ctx, "watch.fingerprint.failed", "initial working tree fingerprint failed", workErr, "repository", repoPath)
+	}
+	gitFP, gitErr := s.gitStateFingerprint(ctx, repoPath)
+	if gitErr != nil {
+		observability.Error(ctx, "watch.fingerprint.failed", "initial Git state fingerprint failed", gitErr, "repository", repoPath)
+	}
+	workFailures, gitFailures := 0, 0
 	close(ready)
 	ticker := time.NewTicker(watchPollInterval)
 	defer ticker.Stop()
@@ -91,15 +107,37 @@ func (s *Server) watchRepositoryPolling(ctx context.Context, c *realtimeClient, 
 			return
 		case <-ticker.C:
 			if next, err := s.worktreeFingerprint(ctx, repoPath); err == nil {
+				if workFailures > 0 {
+					observability.Info(ctx, "watch.fingerprint.recovered", "working tree fingerprint recovered",
+						"repository", repoPath, "consecutive_failures", workFailures)
+					workFailures = 0
+				}
 				if next != workFP {
 					workFP = next
 					workDebounce.Trigger()
 				}
+			} else {
+				workFailures++
+				if workFailures == 1 || workFailures%10 == 0 {
+					observability.Error(ctx, "watch.fingerprint.failed", "working tree fingerprint failed", err,
+						"repository", repoPath, "consecutive_failures", workFailures)
+				}
 			}
 			if next, err := s.gitStateFingerprint(ctx, repoPath); err == nil {
+				if gitFailures > 0 {
+					observability.Info(ctx, "watch.fingerprint.recovered", "Git state fingerprint recovered",
+						"repository", repoPath, "consecutive_failures", gitFailures)
+					gitFailures = 0
+				}
 				if next != gitFP {
 					gitFP = next
 					gitDebounce.Trigger()
+				}
+			} else {
+				gitFailures++
+				if gitFailures == 1 || gitFailures%10 == 0 {
+					observability.Error(ctx, "watch.fingerprint.failed", "Git state fingerprint failed", err,
+						"repository", repoPath, "consecutive_failures", gitFailures)
 				}
 			}
 		}
@@ -175,16 +213,20 @@ func (s *Server) gitStateFingerprint(ctx context.Context, repoPath string) ([32]
 		if info, statErr := os.Stat(p); statErr == nil {
 			writeStatFingerprint(h, name, info)
 			if name == "HEAD" {
-				if b, readErr := os.ReadFile(p); readErr == nil {
-					_, _ = h.Write(b)
+				b, readErr := os.ReadFile(p)
+				if readErr != nil {
+					return sum, readErr
 				}
+				_, _ = h.Write(b)
 			}
+		} else if !os.IsNotExist(statErr) {
+			return sum, statErr
 		}
 	}
 	refs := filepath.Join(gitDir, "refs")
-	_ = filepath.WalkDir(refs, func(path string, d os.DirEntry, walkErr error) error {
+	refsErr := filepath.WalkDir(refs, func(path string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			return nil
+			return walkErr
 		}
 		if d.IsDir() {
 			return nil
@@ -194,12 +236,18 @@ func (s *Server) gitStateFingerprint(ctx context.Context, repoPath string) ([32]
 		}
 		info, infoErr := d.Info()
 		if infoErr != nil {
-			return nil
+			return infoErr
 		}
-		rel, _ := filepath.Rel(gitDir, path)
+		rel, relErr := filepath.Rel(gitDir, path)
+		if relErr != nil {
+			return relErr
+		}
 		writeStatFingerprint(h, rel, info)
 		return nil
 	})
+	if refsErr != nil && !os.IsNotExist(refsErr) {
+		return sum, refsErr
+	}
 	copy(sum[:], h.Sum(nil))
 	return sum, nil
 }

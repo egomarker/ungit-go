@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 )
@@ -36,8 +37,18 @@ func RunHelper(args []string, out io.Writer) error {
 	q.Set("remote", remote)
 	u.RawQuery = q.Encode()
 
+	request, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	if err != nil {
+		return fmt.Errorf("credential-helper request: %w", err)
+	}
+	if requestID := os.Getenv("UNGIT_GO_REQUEST_ID"); requestID != "" {
+		request.Header.Set("X-Request-ID", requestID)
+	}
+	if actionID := os.Getenv("UNGIT_GO_ACTION_ID"); actionID != "" {
+		request.Header.Set("X-Action-ID", actionID)
+	}
 	client := &http.Client{Timeout: 10 * time.Minute}
-	resp, err := client.Get(u.String())
+	resp, err := client.Do(request)
 	if err != nil {
 		return fmt.Errorf("credential-helper query: %w", err)
 	}

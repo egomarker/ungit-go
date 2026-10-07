@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -38,6 +39,10 @@ type Config struct {
 	AutoFetch                      bool              `json:"autoFetch"`
 	Dev                            bool              `json:"dev"`
 	LogLevel                       string            `json:"logLevel"`
+	LogMaxSizeMB                   int               `json:"logMaxSizeMB"`
+	LogMaxBackups                  int               `json:"logMaxBackups"`
+	LogMaxAgeDays                  int               `json:"logMaxAgeDays"`
+	LogCompress                    bool              `json:"logCompress"`
 	LaunchCommand                  *string           `json:"launchCommand,omitempty"`
 	AllowCheckoutNodes             bool              `json:"allowCheckoutNodes"`
 	AllowedIPs                     []string          `json:"allowedIPs"`
@@ -79,6 +84,7 @@ func Default() Config {
 		URLBase:                        DefaultURLBase,
 		RootPath:                       "",
 		LogRESTRequests:                true,
+		LogGitCommands:                 true,
 		Bugtracking:                    false,
 		Authentication:                 false,
 		Users:                          map[string]string{},
@@ -87,7 +93,11 @@ func Default() Config {
 		LaunchBrowser:                  true,
 		NoFFMerge:                      true,
 		AutoFetch:                      true,
-		LogLevel:                       "warn",
+		LogLevel:                       "info",
+		LogMaxSizeMB:                   50,
+		LogMaxBackups:                  10,
+		LogMaxAgeDays:                  30,
+		LogCompress:                    true,
 		AllowCheckoutNodes:             false,
 		AllowedIPs:                     nil,
 		AutoPruneOnFetch:               true,
@@ -128,7 +138,12 @@ func Parse(args []string) (Config, error) {
 	}
 
 	fs := flag.NewFlagSet("ungit-go", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
+	if hasHelpFlag(args) {
+		fs.SetOutput(os.Stdout)
+	} else {
+		// main emits one concise bootstrap error; suppress flag's duplicate.
+		fs.SetOutput(io.Discard)
+	}
 
 	var gitBinPath string
 	var forcedLaunchPath string
@@ -161,7 +176,11 @@ func Parse(args []string) (Config, error) {
 	fs.BoolVar(&cfg.NoFFMerge, "noFFMerge", cfg.NoFFMerge, "use --no-ff for merges")
 	fs.BoolVar(&cfg.AutoFetch, "autoFetch", cfg.AutoFetch, "automatically fetch remotes")
 	fs.BoolVar(&cfg.Dev, "dev", cfg.Dev, "development/test mode")
-	fs.StringVar(&cfg.LogLevel, "logLevel", cfg.LogLevel, "log level")
+	fs.StringVar(&cfg.LogLevel, "logLevel", cfg.LogLevel, "trace, debug, info, warn, or error")
+	fs.IntVar(&cfg.LogMaxSizeMB, "logMaxSizeMB", cfg.LogMaxSizeMB, "maximum log file size before rotation in MB")
+	fs.IntVar(&cfg.LogMaxBackups, "logMaxBackups", cfg.LogMaxBackups, "maximum rotated log files to retain")
+	fs.IntVar(&cfg.LogMaxAgeDays, "logMaxAgeDays", cfg.LogMaxAgeDays, "maximum rotated log age in days")
+	fs.BoolVar(&cfg.LogCompress, "logCompress", cfg.LogCompress, "compress rotated log files")
 	fs.BoolVar(&cfg.AllowCheckoutNodes, "allowCheckoutNodes", cfg.AllowCheckoutNodes, "allow detached-head checkout")
 	fs.BoolVar(&cfg.AutoPruneOnFetch, "autoPruneOnFetch", cfg.AutoPruneOnFetch, "prune on fetch")
 	fs.BoolVar(&cfg.GitVersionCheckOverride, "gitVersionCheckOverride", cfg.GitVersionCheckOverride, "ignore Git version check")
@@ -223,6 +242,18 @@ func Parse(args []string) (Config, error) {
 	if cfg.Theme != "system" && cfg.Theme != "dark" && cfg.Theme != "light" {
 		return Config{}, fmt.Errorf("invalid theme %q", cfg.Theme)
 	}
+	if level := strings.ToLower(strings.TrimSpace(cfg.LogLevel)); level != "trace" && level != "debug" && level != "info" && level != "warn" && level != "warning" && level != "error" {
+		return Config{}, fmt.Errorf("invalid logLevel %q", cfg.LogLevel)
+	}
+	if cfg.LogMaxSizeMB < 1 {
+		return Config{}, fmt.Errorf("logMaxSizeMB must be at least 1")
+	}
+	if cfg.LogMaxBackups < 1 {
+		return Config{}, fmt.Errorf("logMaxBackups must be at least 1")
+	}
+	if cfg.LogMaxAgeDays < 0 {
+		return Config{}, fmt.Errorf("logMaxAgeDays cannot be negative")
+	}
 	if usersJSON != "" {
 		if err := json.Unmarshal([]byte(usersJSON), &cfg.Users); err != nil {
 			return Config{}, fmt.Errorf("invalid --users JSON: %w", err)
@@ -277,6 +308,15 @@ func Parse(args []string) (Config, error) {
 	return cfg, nil
 }
 
+func hasHelpFlag(args []string) bool {
+	for _, arg := range args {
+		if arg == "-h" || arg == "--help" || arg == "-help" {
+			return true
+		}
+	}
+	return false
+}
+
 func hasFlag(args []string, name string) bool {
 	prefix := "--" + name
 	for _, arg := range args {
@@ -292,7 +332,7 @@ func normalizeBooleanNegations(args []string) []string {
 		"launchBrowser": true, "authentication": true, "logRESTRequests": true,
 		"logGitCommands": true, "logGitOutput": true, "bugtracking": true,
 		"showRebaseAndMergeOnlyOnRefs": true, "noFFMerge": true, "autoFetch": true,
-		"dev": true, "allowCheckoutNodes": true, "autoPruneOnFetch": true,
+		"dev": true, "logCompress": true, "allowCheckoutNodes": true, "autoPruneOnFetch": true,
 		"gitVersionCheckOverride": true, "ungitVersionCheckOverride": true,
 		"autoStashAndPop": true, "disableDiscardWarning": true,
 		"autoCheckoutOnBranchCreate": true, "alwaysLoadActiveBranch": true,

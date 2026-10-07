@@ -23,7 +23,7 @@ func (s *Server) registerTestingAPI(mux *http.ServeMux) {
 func (s *Server) testingCreateTempDir(w http.ResponseWriter, r *http.Request) {
 	dir, err := os.MkdirTemp("", "test-temp-dir")
 	if err != nil {
-		writeError(w, err)
+		writeError(r.Context(), w, err)
 		return
 	}
 	s.testTempMu.Lock()
@@ -46,7 +46,7 @@ func (s *Server) testingWriteFile(w http.ResponseWriter, r *http.Request) {
 		content = "test content\n"
 	}
 	if err := os.WriteFile(b.File, []byte(content), 0o666); err != nil {
-		writeError(w, err)
+		writeError(r.Context(), w, err)
 		return
 	}
 	s.realtime.broadcast(b.Path, "working-tree-changed", map[string]string{"repository": b.Path})
@@ -66,7 +66,7 @@ func (s *Server) testingWriteImageFile(w http.ResponseWriter, r *http.Request) {
 		content = []byte("png ~~")
 	}
 	if err := os.WriteFile(b.File, content, 0o666); err != nil {
-		writeError(w, err)
+		writeError(r.Context(), w, err)
 		return
 	}
 	s.realtime.broadcast(b.Path, "working-tree-changed", map[string]string{"repository": b.Path})
@@ -82,7 +82,7 @@ func (s *Server) testingRemoveFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := os.Remove(b.File); err != nil {
-		writeError(w, err)
+		writeError(r.Context(), w, err)
 		return
 	}
 	s.realtime.broadcast(b.Path, "working-tree-changed", map[string]string{"repository": b.Path})
@@ -104,11 +104,11 @@ func (s *Server) testingGit(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := s.git.Runner.Run(r.Context(), gitapi.Command{RepoPath: raw.Path, Args: args})
 	if err != nil {
-		writeError(w, err)
+		writeError(r.Context(), w, err)
 		return
 	}
 	s.realtime.broadcast(raw.Path, "working-tree-changed", map[string]string{"repository": raw.Path})
-	writeResult(w, string(res.Stdout), nil)
+	writeResult(r.Context(), w, string(res.Stdout), nil)
 }
 
 func (s *Server) testingCleanup(w http.ResponseWriter, r *http.Request) {

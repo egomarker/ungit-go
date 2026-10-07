@@ -14,6 +14,7 @@ import (
 	"time"
 
 	gitapi "github.com/egomarker/ungit-go/internal/git"
+	"github.com/egomarker/ungit-go/internal/observability"
 )
 
 func (s *Server) registerWriteAPI(mux *http.ServeMux) {
@@ -56,22 +57,25 @@ func (s *Server) registerWriteAPI(mux *http.ServeMux) {
 func decodeJSONBody(w http.ResponseWriter, r *http.Request, dst any) bool {
 	defer r.Body.Close()
 	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+		observability.Warn(r.Context(), "api.request.decode_failed", "failed to decode JSON request body", observability.ErrorFields(err)...)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return false
 	}
 	return true
 }
 
-func ensureExistingPath(w http.ResponseWriter, p string) bool {
+func ensureExistingPath(ctx context.Context, w http.ResponseWriter, p string) bool {
 	if _, err := os.Stat(p); err != nil {
+		observability.Warn(ctx, "api.path.invalid", "requested path does not exist",
+			append([]any{"path", p}, observability.ErrorFields(err)...)...)
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "'No such path: " + p, "errorCode": "no-such-path"})
 		return false
 	}
 	return true
 }
 
-func runWriteResult(w http.ResponseWriter, value string, err error) {
-	writeResult(w, value, err)
+func runWriteResult(ctx context.Context, w http.ResponseWriter, value string, err error) {
+	writeResult(ctx, w, value, err)
 }
 
 func (s *Server) postInit(w http.ResponseWriter, r *http.Request) {
@@ -79,7 +83,7 @@ func (s *Server) postInit(w http.ResponseWriter, r *http.Request) {
 		Path string `json:"path"`
 		Bare bool   `json:"bare"`
 	}
-	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(w, b.Path) {
+	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(r.Context(), w, b.Path) {
 		return
 	}
 	args := []string{"init"}
@@ -87,7 +91,7 @@ func (s *Server) postInit(w http.ResponseWriter, r *http.Request) {
 		args = []string{"init", "--bare", "--shared"}
 	}
 	out, err := s.git.RunMutation(r.Context(), b.Path, args...)
-	runWriteResult(w, out, err)
+	runWriteResult(r.Context(), w, out, err)
 }
 
 func (s *Server) postClone(w http.ResponseWriter, r *http.Request) {
@@ -98,10 +102,10 @@ func (s *Server) postClone(w http.ResponseWriter, r *http.Request) {
 		IsRecursiveSubmodule bool   `json:"isRecursiveSubmodule"`
 		SocketID             any    `json:"socketId"`
 	}
-	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(w, b.Path) {
+	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(r.Context(), w, b.Path) {
 		return
 	}
-	if _, ok := s.requireSocket(w, b.SocketID); !ok {
+	if _, ok := s.requireSocket(r.Context(), w, b.SocketID); !ok {
 		return
 	}
 	url := strings.TrimSpace(b.URL)
@@ -113,10 +117,10 @@ func (s *Server) postClone(w http.ResponseWriter, r *http.Request) {
 	if b.IsRecursiveSubmodule {
 		args = append(args, "--recurse-submodules")
 	}
-	args = append(s.credentialArgs(b.SocketID, url), args...)
+	args = append(s.credentialArgs(r.Context(), b.SocketID, url), args...)
 	_, err := s.git.Runner.Run(r.Context(), gitapi.Command{RepoPath: b.Path, Args: args, Timeout: 2 * time.Hour, Env: []string{"GIT_TERMINAL_PROMPT=0"}})
 	if err != nil {
-		writeError(w, err)
+		writeError(r.Context(), w, err)
 		return
 	}
 	p, _ := filepath.Abs(filepath.Join(b.Path, dest))
@@ -132,10 +136,10 @@ func (s *Server) postPush(w http.ResponseWriter, r *http.Request) {
 		Force        bool   `json:"force"`
 		SocketID     any    `json:"socketId"`
 	}
-	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(w, b.Path) {
+	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(r.Context(), w, b.Path) {
 		return
 	}
-	if _, ok := s.requireSocket(w, b.SocketID); !ok {
+	if _, ok := s.requireSocket(r.Context(), w, b.SocketID); !ok {
 		return
 	}
 	ref := b.RefSpec
@@ -149,9 +153,9 @@ func (s *Server) postPush(w http.ResponseWriter, r *http.Request) {
 	if b.Force {
 		args = append(args, "-f")
 	}
-	args = append(s.credentialArgs(b.SocketID, b.Remote), args...)
+	args = append(s.credentialArgs(r.Context(), b.SocketID, b.Remote), args...)
 	res, err := s.git.Runner.Run(r.Context(), gitapi.Command{RepoPath: b.Path, Args: args, Timeout: 10 * time.Minute, Env: []string{"GIT_TERMINAL_PROMPT=0"}})
-	writeResult(w, string(res.Stdout), err)
+	writeResult(r.Context(), w, string(res.Stdout), err)
 }
 
 func (s *Server) postReset(w http.ResponseWriter, r *http.Request) {
@@ -160,11 +164,11 @@ func (s *Server) postReset(w http.ResponseWriter, r *http.Request) {
 		Mode string `json:"mode"`
 		To   string `json:"to"`
 	}
-	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(w, b.Path) {
+	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(r.Context(), w, b.Path) {
 		return
 	}
 	out, err := s.git.AutoStashExecuteAndPop(r.Context(), b.Path, []string{"reset", "--" + b.Mode, b.To}, 0)
-	runWriteResult(w, out, err)
+	runWriteResult(r.Context(), w, out, err)
 }
 
 func (s *Server) postDiscardChanges(w http.ResponseWriter, r *http.Request) {
@@ -173,7 +177,7 @@ func (s *Server) postDiscardChanges(w http.ResponseWriter, r *http.Request) {
 		All  bool   `json:"all"`
 		File string `json:"file"`
 	}
-	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(w, b.Path) {
+	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(r.Context(), w, b.Path) {
 		return
 	}
 	var out string
@@ -183,7 +187,7 @@ func (s *Server) postDiscardChanges(w http.ResponseWriter, r *http.Request) {
 	} else {
 		out, err = s.git.DiscardChangesInFile(r.Context(), b.Path, strings.TrimSpace(b.File))
 	}
-	runWriteResult(w, out, err)
+	runWriteResult(r.Context(), w, out, err)
 }
 
 func (s *Server) postIgnoreFile(w http.ResponseWriter, r *http.Request) {
@@ -191,7 +195,7 @@ func (s *Server) postIgnoreFile(w http.ResponseWriter, r *http.Request) {
 		Path string `json:"path"`
 		File string `json:"file"`
 	}
-	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(w, b.Path) {
+	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(r.Context(), w, b.Path) {
 		return
 	}
 	lineEnding := "\n"
@@ -201,9 +205,12 @@ func (s *Server) postIgnoreFile(w http.ResponseWriter, r *http.Request) {
 	f, err := os.OpenFile(filepath.Join(strings.TrimSpace(b.Path), ".gitignore"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o666)
 	if err == nil {
 		_, err = f.WriteString(lineEnding + strings.TrimSpace(b.File))
-		_ = f.Close()
+		if closeErr := f.Close(); err == nil {
+			err = closeErr
+		}
 	}
 	if err != nil {
+		logAPIError(r.Context(), "api.gitignore.append_failed", err, "repository", b.Path)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"errorCode": "error-appending-ignore", "error": "Error while appending to .gitignore file."})
 		return
 	}
@@ -218,11 +225,11 @@ func (s *Server) postCommit(w http.ResponseWriter, r *http.Request) {
 		Message     *string             `json:"message"`
 		Files       []gitapi.CommitFile `json:"files"`
 	}
-	if !decodeJSONBody(w, r, &raw) || !ensureExistingPath(w, raw.Path) {
+	if !decodeJSONBody(w, r, &raw) || !ensureExistingPath(r.Context(), w, raw.Path) {
 		return
 	}
 	out, err := s.git.Commit(r.Context(), raw.Path, raw.Amend, raw.EmptyCommit, raw.Message, raw.Files)
-	runWriteResult(w, out, err)
+	runWriteResult(r.Context(), w, out, err)
 }
 
 func (s *Server) postRevert(w http.ResponseWriter, r *http.Request) {
@@ -230,7 +237,7 @@ func (s *Server) postRevert(w http.ResponseWriter, r *http.Request) {
 		Path   string `json:"path"`
 		Commit string `json:"commit"`
 	}
-	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(w, b.Path) {
+	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(r.Context(), w, b.Path) {
 		return
 	}
 	res, err := s.git.Runner.Run(r.Context(), gitapi.Command{RepoPath: b.Path, Args: []string{"revert", b.Commit}})
@@ -240,7 +247,7 @@ func (s *Server) postRevert(w http.ResponseWriter, r *http.Request) {
 			res, err = s.git.Runner.Run(r.Context(), gitapi.Command{RepoPath: b.Path, Args: []string{"revert", "-m", "1", b.Commit}})
 		}
 	}
-	writeResult(w, string(res.Stdout), err)
+	writeResult(r.Context(), w, string(res.Stdout), err)
 }
 
 func (s *Server) postBranch(w http.ResponseWriter, r *http.Request) {
@@ -250,7 +257,7 @@ func (s *Server) postBranch(w http.ResponseWriter, r *http.Request) {
 		Name  string `json:"name"`
 		SHA1  string `json:"sha1"`
 	}
-	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(w, b.Path) {
+	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(r.Context(), w, b.Path) {
 		return
 	}
 	sha := strings.TrimSpace(b.SHA1)
@@ -263,27 +270,27 @@ func (s *Server) postBranch(w http.ResponseWriter, r *http.Request) {
 	}
 	args = append(args, strings.TrimSpace(b.Name), sha)
 	out, err := s.git.RunMutation(r.Context(), b.Path, args...)
-	runWriteResult(w, out, err)
+	runWriteResult(r.Context(), w, out, err)
 }
 
 func (s *Server) deleteBranch(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	if !ensureExistingPath(w, q.Get("path")) {
+	if !ensureExistingPath(r.Context(), w, q.Get("path")) {
 		return
 	}
 	out, err := s.git.RunMutation(r.Context(), q.Get("path"), "branch", "-D", strings.TrimSpace(q.Get("name")))
-	runWriteResult(w, out, err)
+	runWriteResult(r.Context(), w, out, err)
 }
 
 func (s *Server) deleteRemoteBranch(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	if !ensureExistingPath(w, q.Get("path")) {
+	if !ensureExistingPath(r.Context(), w, q.Get("path")) {
 		return
 	}
-	if _, ok := s.requireSocket(w, q.Get("socketId")); !ok {
+	if _, ok := s.requireSocket(r.Context(), w, q.Get("socketId")); !ok {
 		return
 	}
-	args := append(s.credentialArgs(q.Get("socketId"), q.Get("remote")), "push", q.Get("remote"), ":"+strings.TrimSpace(q.Get("name")))
+	args := append(s.credentialArgs(r.Context(), q.Get("socketId"), q.Get("remote")), "push", q.Get("remote"), ":"+strings.TrimSpace(q.Get("name")))
 	res, err := s.git.Runner.Run(r.Context(), gitapi.Command{RepoPath: q.Get("path"), Args: args, Timeout: 10 * time.Minute, Env: []string{"GIT_TERMINAL_PROMPT=0"}})
 	if err != nil {
 		var ge *gitapi.Error
@@ -291,7 +298,7 @@ func (s *Server) deleteRemoteBranch(w http.ResponseWriter, r *http.Request) {
 			err = nil
 		}
 	}
-	writeResult(w, string(res.Stdout), err)
+	writeResult(r.Context(), w, string(res.Stdout), err)
 }
 
 func (s *Server) postTag(w http.ResponseWriter, r *http.Request) {
@@ -301,7 +308,7 @@ func (s *Server) postTag(w http.ResponseWriter, r *http.Request) {
 		Name  string `json:"name"`
 		SHA1  string `json:"sha1"`
 	}
-	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(w, b.Path) {
+	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(r.Context(), w, b.Path) {
 		return
 	}
 	sha := strings.TrimSpace(b.SHA1)
@@ -320,28 +327,28 @@ func (s *Server) postTag(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimSpace(b.Name)
 	args = append(args, name, "-m", name, sha)
 	out, err := s.git.RunMutation(r.Context(), b.Path, args...)
-	runWriteResult(w, out, err)
+	runWriteResult(r.Context(), w, out, err)
 }
 
 func (s *Server) deleteTag(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	if !ensureExistingPath(w, q.Get("path")) {
+	if !ensureExistingPath(r.Context(), w, q.Get("path")) {
 		return
 	}
 	out, err := s.git.RunMutation(r.Context(), q.Get("path"), "tag", "-d", strings.TrimSpace(q.Get("name")))
-	runWriteResult(w, out, err)
+	runWriteResult(r.Context(), w, out, err)
 }
 
 func (s *Server) deleteRemoteTag(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	if !ensureExistingPath(w, q.Get("path")) {
+	if !ensureExistingPath(r.Context(), w, q.Get("path")) {
 		return
 	}
 	// The Node backend ignores failure of the local delete before deleting remote.
 	_, _ = s.git.Runner.Run(r.Context(), gitapi.Command{RepoPath: q.Get("path"), Args: []string{"tag", "-d", strings.TrimSpace(q.Get("name"))}})
-	args := append(s.credentialArgs(q.Get("socketId"), q.Get("remote")), "push", q.Get("remote"), ":refs/tags/"+strings.TrimSpace(q.Get("name")))
+	args := append(s.credentialArgs(r.Context(), q.Get("socketId"), q.Get("remote")), "push", q.Get("remote"), ":refs/tags/"+strings.TrimSpace(q.Get("name")))
 	res, err := s.git.Runner.Run(r.Context(), gitapi.Command{RepoPath: q.Get("path"), Args: args, Timeout: 10 * time.Minute, Env: []string{"GIT_TERMINAL_PROMPT=0"}})
-	writeResult(w, string(res.Stdout), err)
+	writeResult(r.Context(), w, string(res.Stdout), err)
 }
 
 func (s *Server) postCheckout(w http.ResponseWriter, r *http.Request) {
@@ -350,7 +357,7 @@ func (s *Server) postCheckout(w http.ResponseWriter, r *http.Request) {
 		Name string `json:"name"`
 		SHA1 string `json:"sha1"`
 	}
-	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(w, b.Path) {
+	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(r.Context(), w, b.Path) {
 		return
 	}
 	args := []string{"checkout", strings.TrimSpace(b.Name)}
@@ -358,7 +365,7 @@ func (s *Server) postCheckout(w http.ResponseWriter, r *http.Request) {
 		args = []string{"checkout", "-b", strings.TrimSpace(b.Name), b.SHA1}
 	}
 	out, err := s.git.AutoStashExecuteAndPop(r.Context(), b.Path, args, 0)
-	runWriteResult(w, out, err)
+	runWriteResult(r.Context(), w, out, err)
 }
 
 func (s *Server) postCherryPick(w http.ResponseWriter, r *http.Request) {
@@ -366,11 +373,11 @@ func (s *Server) postCherryPick(w http.ResponseWriter, r *http.Request) {
 		Path string `json:"path"`
 		Name string `json:"name"`
 	}
-	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(w, b.Path) {
+	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(r.Context(), w, b.Path) {
 		return
 	}
 	out, err := s.git.AutoStashExecuteAndPop(r.Context(), b.Path, []string{"cherry-pick", strings.TrimSpace(b.Name)}, 0)
-	runWriteResult(w, out, err)
+	runWriteResult(r.Context(), w, out, err)
 }
 
 func (s *Server) postRemote(w http.ResponseWriter, r *http.Request) {
@@ -378,20 +385,20 @@ func (s *Server) postRemote(w http.ResponseWriter, r *http.Request) {
 		Path string `json:"path"`
 		URL  string `json:"url"`
 	}
-	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(w, b.Path) {
+	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(r.Context(), w, b.Path) {
 		return
 	}
 	out, err := s.git.RunMutation(r.Context(), b.Path, "remote", "add", r.PathValue("name"), b.URL)
-	runWriteResult(w, out, err)
+	runWriteResult(r.Context(), w, out, err)
 }
 
 func (s *Server) deleteRemote(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	if !ensureExistingPath(w, q.Get("path")) {
+	if !ensureExistingPath(r.Context(), w, q.Get("path")) {
 		return
 	}
 	out, err := s.git.RunMutation(r.Context(), q.Get("path"), "remote", "remove", r.PathValue("name"))
-	runWriteResult(w, out, err)
+	runWriteResult(r.Context(), w, out, err)
 }
 
 func (s *Server) postMerge(w http.ResponseWriter, r *http.Request) {
@@ -399,7 +406,7 @@ func (s *Server) postMerge(w http.ResponseWriter, r *http.Request) {
 		Path string `json:"path"`
 		With string `json:"with"`
 	}
-	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(w, b.Path) {
+	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(r.Context(), w, b.Path) {
 		return
 	}
 	args := []string{"merge"}
@@ -408,7 +415,7 @@ func (s *Server) postMerge(w http.ResponseWriter, r *http.Request) {
 	}
 	args = append(args, strings.TrimSpace(b.With))
 	out, err := s.git.RunMutation(r.Context(), b.Path, args...)
-	runWriteResult(w, out, err)
+	runWriteResult(r.Context(), w, out, err)
 }
 
 func (s *Server) postMergeContinue(w http.ResponseWriter, r *http.Request) {
@@ -416,11 +423,11 @@ func (s *Server) postMergeContinue(w http.ResponseWriter, r *http.Request) {
 		Path    string `json:"path"`
 		Message string `json:"message"`
 	}
-	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(w, b.Path) {
+	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(r.Context(), w, b.Path) {
 		return
 	}
 	res, err := s.git.Runner.Run(r.Context(), gitapi.Command{RepoPath: b.Path, Args: []string{"commit", "--file=-"}, Stdin: []byte(b.Message)})
-	writeResult(w, string(res.Stdout), err)
+	writeResult(r.Context(), w, string(res.Stdout), err)
 }
 
 func (s *Server) postMergeAbort(w http.ResponseWriter, r *http.Request) {
@@ -429,7 +436,7 @@ func (s *Server) postMergeAbort(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out, err := s.git.RunMutation(r.Context(), path, "merge", "--abort")
-	runWriteResult(w, out, err)
+	runWriteResult(r.Context(), w, out, err)
 }
 
 func (s *Server) postSquash(w http.ResponseWriter, r *http.Request) {
@@ -437,11 +444,11 @@ func (s *Server) postSquash(w http.ResponseWriter, r *http.Request) {
 		Path   string `json:"path"`
 		Target string `json:"target"`
 	}
-	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(w, b.Path) {
+	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(r.Context(), w, b.Path) {
 		return
 	}
 	out, err := s.git.RunMutation(r.Context(), b.Path, "merge", "--squash", strings.TrimSpace(b.Target))
-	runWriteResult(w, out, err)
+	runWriteResult(r.Context(), w, out, err)
 }
 
 func (s *Server) postRebase(w http.ResponseWriter, r *http.Request) {
@@ -449,11 +456,11 @@ func (s *Server) postRebase(w http.ResponseWriter, r *http.Request) {
 		Path string `json:"path"`
 		Onto string `json:"onto"`
 	}
-	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(w, b.Path) {
+	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(r.Context(), w, b.Path) {
 		return
 	}
 	out, err := s.git.RunMutation(r.Context(), b.Path, "rebase", strings.TrimSpace(b.Onto))
-	runWriteResult(w, out, err)
+	runWriteResult(r.Context(), w, out, err)
 }
 
 func (s *Server) postRebaseContinue(w http.ResponseWriter, r *http.Request) {
@@ -462,7 +469,7 @@ func (s *Server) postRebaseContinue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out, err := s.git.RunMutation(r.Context(), path, "rebase", "--continue")
-	runWriteResult(w, out, err)
+	runWriteResult(r.Context(), w, out, err)
 }
 
 func (s *Server) postRebaseAbort(w http.ResponseWriter, r *http.Request) {
@@ -471,14 +478,14 @@ func (s *Server) postRebaseAbort(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out, err := s.git.RunMutation(r.Context(), path, "rebase", "--abort")
-	runWriteResult(w, out, err)
+	runWriteResult(r.Context(), w, out, err)
 }
 
 func decodePathOnly(w http.ResponseWriter, r *http.Request) (string, bool) {
 	var b struct {
 		Path string `json:"path"`
 	}
-	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(w, b.Path) {
+	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(r.Context(), w, b.Path) {
 		return "", false
 	}
 	return b.Path, true
@@ -489,11 +496,11 @@ func (s *Server) postResolveConflicts(w http.ResponseWriter, r *http.Request) {
 		Path  string   `json:"path"`
 		Files []string `json:"files"`
 	}
-	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(w, b.Path) {
+	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(r.Context(), w, b.Path) {
 		return
 	}
 	out, err := s.git.ResolveConflicts(r.Context(), b.Path, b.Files)
-	runWriteResult(w, out, err)
+	runWriteResult(r.Context(), w, out, err)
 }
 
 func (s *Server) postLaunchMergeTool(w http.ResponseWriter, r *http.Request) {
@@ -502,7 +509,7 @@ func (s *Server) postLaunchMergeTool(w http.ResponseWriter, r *http.Request) {
 		File string `json:"file"`
 		Tool any    `json:"tool"`
 	}
-	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(w, b.Path) {
+	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(r.Context(), w, b.Path) {
 		return
 	}
 	args := []string{"mergetool"}
@@ -511,9 +518,10 @@ func (s *Server) postLaunchMergeTool(w http.ResponseWriter, r *http.Request) {
 		args = append(args, "--tool ", tool)
 	}
 	args = append(args, "--no-prompt", b.File)
-	go func(path string, a []string) {
-		_, _ = s.git.Runner.Run(context.Background(), gitapi.Command{RepoPath: path, Args: a})
-	}(b.Path, append([]string(nil), args...))
+	actionCtx := context.WithoutCancel(r.Context())
+	go func(ctx context.Context, path string, a []string) {
+		_, _ = s.git.Runner.Run(ctx, gitapi.Command{RepoPath: path, Args: a})
+	}(actionCtx, b.Path, append([]string(nil), args...))
 	writeJSON(w, http.StatusOK, map[string]any{})
 }
 
@@ -523,11 +531,11 @@ func (s *Server) postSubmodulesUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := s.git.Runner.Run(r.Context(), gitapi.Command{RepoPath: path, Args: []string{"submodule", "init"}}); err != nil {
-		writeError(w, err)
+		writeError(r.Context(), w, err)
 		return
 	}
 	res, err := s.git.Runner.Run(r.Context(), gitapi.Command{RepoPath: path, Args: []string{"submodule", "update"}})
-	writeResult(w, string(res.Stdout), err)
+	writeResult(r.Context(), w, string(res.Stdout), err)
 }
 
 func (s *Server) postSubmodulesAdd(w http.ResponseWriter, r *http.Request) {
@@ -536,39 +544,39 @@ func (s *Server) postSubmodulesAdd(w http.ResponseWriter, r *http.Request) {
 		SubmoduleURL  string `json:"submoduleUrl"`
 		SubmodulePath string `json:"submodulePath"`
 	}
-	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(w, b.Path) {
+	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(r.Context(), w, b.Path) {
 		return
 	}
 	out, err := s.git.RunMutation(r.Context(), b.Path, "submodule", "add", strings.TrimSpace(b.SubmoduleURL), strings.TrimSpace(b.SubmodulePath))
-	runWriteResult(w, out, err)
+	runWriteResult(r.Context(), w, out, err)
 }
 
 func (s *Server) deleteSubmodule(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	path := q.Get("path")
-	if !ensureExistingPath(w, path) {
+	if !ensureExistingPath(r.Context(), w, path) {
 		return
 	}
 	name := q.Get("submoduleName")
 	subPath := q.Get("submodulePath")
 	if _, err := s.git.Runner.Run(r.Context(), gitapi.Command{RepoPath: path, Args: []string{"submodule", "deinit", "-f", name}}); err != nil {
-		writeError(w, err)
+		writeError(r.Context(), w, err)
 		return
 	}
 	res, err := s.git.Runner.Run(r.Context(), gitapi.Command{RepoPath: path, Args: []string{"rm", "-f", name}})
 	if err != nil {
-		writeError(w, err)
+		writeError(r.Context(), w, err)
 		return
 	}
 	if err := os.RemoveAll(filepath.Join(path, subPath)); err != nil {
-		writeError(w, err)
+		writeError(r.Context(), w, err)
 		return
 	}
 	if err := os.RemoveAll(filepath.Join(path, ".git", "modules", subPath)); err != nil {
-		writeError(w, err)
+		writeError(r.Context(), w, err)
 		return
 	}
-	writeResult(w, string(res.Stdout), nil)
+	writeResult(r.Context(), w, string(res.Stdout), nil)
 }
 
 func (s *Server) postStash(w http.ResponseWriter, r *http.Request) {
@@ -576,16 +584,16 @@ func (s *Server) postStash(w http.ResponseWriter, r *http.Request) {
 		Path    string `json:"path"`
 		Message string `json:"message"`
 	}
-	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(w, b.Path) {
+	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(r.Context(), w, b.Path) {
 		return
 	}
 	out, err := s.git.RunMutation(r.Context(), b.Path, "stash", "save", "--include-untracked", b.Message)
-	runWriteResult(w, out, err)
+	runWriteResult(r.Context(), w, out, err)
 }
 
 func (s *Server) deleteStash(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	if !ensureExistingPath(w, q.Get("path")) {
+	if !ensureExistingPath(r.Context(), w, q.Get("path")) {
 		return
 	}
 	typeName := "drop"
@@ -593,7 +601,7 @@ func (s *Server) deleteStash(w http.ResponseWriter, r *http.Request) {
 		typeName = "apply"
 	}
 	out, err := s.git.RunMutation(r.Context(), q.Get("path"), "stash", typeName, fmt.Sprintf("stash@{%s}", r.PathValue("id")))
-	runWriteResult(w, out, err)
+	runWriteResult(r.Context(), w, out, err)
 }
 
 func (s *Server) postCreateDir(w http.ResponseWriter, r *http.Request) {
@@ -605,16 +613,19 @@ func (s *Server) postCreateDir(w http.ResponseWriter, r *http.Request) {
 	if dir == "" {
 		defer r.Body.Close()
 		if err := json.NewDecoder(r.Body).Decode(&b); err != nil && !errors.Is(err, io.EOF) {
+			observability.Warn(r.Context(), "api.create_dir.decode_failed", "failed to decode create-directory request", observability.ErrorFields(err)...)
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
 		dir = b.Dir
 	}
 	if dir == "" {
+		observability.Warn(r.Context(), "api.create_dir.path_missing", "create-directory request has no path")
 		writeJSON(w, http.StatusBadRequest, map[string]string{"errorCode": "missing-request-parameter", "error": "You need to supply the path request parameter"})
 		return
 	}
 	if err := os.MkdirAll(dir, 0o777); err != nil {
+		logAPIError(r.Context(), "api.create_dir.failed", err, "path", dir)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
@@ -626,14 +637,16 @@ func (s *Server) putGitIgnore(w http.ResponseWriter, r *http.Request) {
 		Path string  `json:"path"`
 		Data *string `json:"data"`
 	}
-	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(w, b.Path) {
+	if !decodeJSONBody(w, r, &b) || !ensureExistingPath(r.Context(), w, b.Path) {
 		return
 	}
 	if b.Data == nil {
+		observability.Warn(r.Context(), "api.gitignore.content_missing", "Git ignore update has no content", "repository", b.Path)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"message": "Invalid .gitignore content"})
 		return
 	}
 	if err := os.WriteFile(filepath.Join(b.Path, ".gitignore"), []byte(*b.Data), 0o666); err != nil {
+		logAPIError(r.Context(), "api.gitignore.write_failed", err, "repository", b.Path)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}

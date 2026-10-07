@@ -1,4 +1,5 @@
 var programEvents = require('ungit-program-events');
+var clientLogging = require('./client-logging');
 
 var rootPath = (ungit.config && ungit.config.rootPath) || '';
 var nprogress;
@@ -29,13 +30,25 @@ Server.prototype.initSocket = function () {
     path: rootPath + '/socket.io',
   });
   this.socket.on('connect_error', function (err) {
+    clientLogging.report(
+      'error',
+      'realtime.connect_error',
+      err && err.message ? err.message : err,
+      {},
+      err && err.stack
+    );
     self._isConnected(function (connected) {
       if (connected) throw err;
       else self._onDisconnect(err);
     });
   });
-  this.socket.on('disconnect', function () {
-    self._onDisconnect();
+  this.socket.on('disconnect', function (reason) {
+    clientLogging.report(
+      'warn',
+      'realtime.disconnect',
+      reason || 'Realtime connection disconnected'
+    );
+    self._onDisconnect(reason);
   });
   this.socket.on('connected', function (data) {
     self.socketId = data.socketId;
@@ -66,7 +79,7 @@ Server.prototype._httpJsonRequest = function (request, callback) {
   httpRequest.onreadystatechange = function () {
     // It seems like you can get both readyState == 0, and readyState == 4 && status == 0 when you lose connection to the server
     if (httpRequest.readyState === 0) {
-      callback({ error: 'connection-lost' });
+      callback({ error: 'connection-lost', requestId: '' });
     } else if (httpRequest.readyState === 4) {
       var body;
       try {
@@ -74,9 +87,20 @@ Server.prototype._httpJsonRequest = function (request, callback) {
       } catch {
         body = null;
       }
-      if (httpRequest.status == 0) callback({ error: 'connection-lost' });
-      else if (httpRequest.status != 200)
-        callback({ status: httpRequest.status, body: body, httpRequest: httpRequest });
+      if (httpRequest.status == 0)
+        callback({
+          error: 'connection-lost',
+          requestId: httpRequest.getResponseHeader('X-Request-ID'),
+          actionId: httpRequest.getResponseHeader('X-Action-ID'),
+        });
+      else if (httpRequest.status < 200 || httpRequest.status >= 300)
+        callback({
+          status: httpRequest.status,
+          body: body,
+          httpRequest: httpRequest,
+          requestId: httpRequest.getResponseHeader('X-Request-ID'),
+          actionId: httpRequest.getResponseHeader('X-Action-ID'),
+        });
       else callback(null, body);
     }
   };
@@ -132,6 +156,19 @@ Server.prototype.queryPromise = function (method, path, body) {
   return new Promise(function (resolve, reject) {
     self._httpJsonRequest(request, function (error, res) {
       if (error) {
+        clientLogging.report(
+          'error',
+          'api.request_failed',
+          error.error || error.status || 'request failed',
+          {
+            method: method,
+            path: path,
+            status: error.status || 0,
+            requestId: error.requestId || '',
+            actionId: error.actionId || '',
+            errorCode: error.body && error.body.errorCode ? error.body.errorCode : '',
+          }
+        );
         if (error.error == 'connection-lost') {
           return self._isConnected(function (connected) {
             if (connected) {
@@ -180,6 +217,15 @@ Server.prototype.putPromise = function (url, arg) {
 };
 
 Server.prototype.unhandledRejection = function (err) {
+  clientLogging.report(
+    'error',
+    'api.unhandled_rejection',
+    err && (err.errorSummary || err.message || err.errorCode)
+      ? err.errorSummary || err.message || err.errorCode
+      : err,
+    { path: err && err.path ? err.path : '', errorCode: err && err.errorCode ? err.errorCode : '' },
+    err && err.stack
+  );
   // Show a error screen for git errors (so that people have a chance to debug them)
   if (err.res && err.res.body && err.res.body.isGitError) {
     programEvents.dispatch({

@@ -6,11 +6,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -20,53 +20,124 @@ import (
 	"github.com/egomarker/ungit-go/internal/config"
 	"github.com/egomarker/ungit-go/internal/credentials"
 	gitinfo "github.com/egomarker/ungit-go/internal/git"
+	"github.com/egomarker/ungit-go/internal/observability"
 	ungitserver "github.com/egomarker/ungit-go/internal/server"
 )
+
+type loggedOperationalError struct{ error }
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "credential-helper" {
 		if err := credentials.RunHelper(os.Args[2:], os.Stdout); err != nil {
-			log.Fatal(err)
+			fmt.Fprintln(os.Stderr, "ungit-go credential-helper:", err)
+			os.Exit(1)
 		}
 		return
 	}
+	if err := run(); err != nil {
+		var logged loggedOperationalError
+		if !errors.As(err, &logged) {
+			// File logging may not exist yet for parse/bootstrap failures, or may
+			// have failed while closing. Emit one concise emergency diagnostic.
+			fmt.Fprintln(os.Stderr, "ungit-go:", err)
+		}
+		os.Exit(1)
+	}
+}
 
+func run() (returnErr error) {
 	cfg, err := config.Parse(os.Args[1:])
 	if err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			return
+			return nil
 		}
-		log.Fatal(err)
+		return err
 	}
 	if cfg.ShowVersion {
 		fmt.Println(packageVersion())
-		return
+		return nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	version := gitinfo.GetVersionInfo(ctx, cfg.GitBinPath)
+	versionText := packageVersion()
+	logging, err := observability.Start(observability.Options{
+		Directory:  cfg.LogDirectory,
+		Level:      cfg.LogLevel,
+		MaxSizeMB:  cfg.LogMaxSizeMB,
+		MaxBackups: cfg.LogMaxBackups,
+		MaxAgeDays: cfg.LogMaxAgeDays,
+		Compress:   cfg.LogCompress,
+		Version:    versionText,
+	})
+	if err != nil {
+		return fmt.Errorf("initialize file logging: %w", err)
+	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			observability.Error(context.Background(), "process.panic", "unhandled process panic", fmt.Errorf("%v", recovered),
+				"stack", string(debug.Stack()))
+			returnErr = fmt.Errorf("panic: %v", recovered)
+		}
+		if closeErr := logging.Close(); closeErr != nil {
+			returnErr = fmt.Errorf("close log file: %w", closeErr)
+			return
+		}
+		if returnErr != nil {
+			returnErr = loggedOperationalError{error: returnErr}
+		}
+	}()
+
+	processCtx, processCancel := context.WithCancel(context.Background())
+	defer processCancel()
+	startupFields := append(observability.RuntimeFields(),
+		"log_path", logging.Path(),
+		"bind_ip", cfg.UngitBindIP,
+		"port", cfg.Port,
+		"root_path", cfg.RootPath,
+		"working_directory", currentWorkingDirectory(),
+		"log_level", cfg.LogLevel,
+	)
+	observability.Info(processCtx, "process.start", "Ungit-Go process starting", startupFields...)
+
+	ctx, cancel := context.WithTimeout(processCtx, 5*time.Second)
+	gitVersion := gitinfo.GetVersionInfo(ctx, cfg.GitBinPath)
 	cancel()
-	if version.Version == "unkown" {
-		log.Fatalf("Can't run %q --version. Is git installed and available in your path?", gitinfo.Executable(cfg.GitBinPath))
+	if gitVersion.Version == "unkown" {
+		err := fmt.Errorf("can't run %q --version; Git may not be installed or available in PATH", gitinfo.Executable(cfg.GitBinPath))
+		observability.Error(processCtx, "startup.git_version.failed", "Git version check failed", err)
+		return err
 	}
-	if !version.Satisfied && !cfg.GitVersionCheckOverride {
-		log.Fatal(version.Error)
+	if !gitVersion.Satisfied && !cfg.GitVersionCheckOverride {
+		versionErr := errors.New(gitVersion.Error)
+		observability.Error(processCtx, "startup.git_version.unsupported", "Git version is unsupported", versionErr,
+			"git_version", gitVersion.Version)
+		return versionErr
 	}
+	observability.Info(processCtx, "startup.git_version.completed", "Git version verified", "git_version", gitVersion.Version)
 
 	app, err := ungitserver.New(cfg)
 	if err != nil {
-		log.Fatal(err)
+		observability.Error(processCtx, "startup.server.failed", "failed to initialize server", err)
+		return err
 	}
 
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", cfg.UngitBindIP, cfg.Port))
 	if err != nil {
 		if errors.Is(err, syscall.EADDRINUSE) && cfg.Port != 0 {
-			launchConfigured(cfg, browserURL(cfg, cfg.Port))
-			return
+			observability.Warn(processCtx, "startup.port.in_use", "configured port is already in use; reusing existing service",
+				"bind_ip", cfg.UngitBindIP, "port", cfg.Port)
+			launchConfigured(processCtx, cfg, browserURL(cfg, cfg.Port))
+			return nil
 		}
-		log.Fatal(err)
+		observability.Error(processCtx, "startup.listen.failed", "failed to bind HTTP listener", err,
+			"bind_ip", cfg.UngitBindIP, "port", cfg.Port)
+		return err
 	}
 	actualPort := listener.Addr().(*net.TCPAddr).Port
+	if err := logging.MarkRunning(); err != nil {
+		_ = listener.Close()
+		observability.Error(processCtx, "process.run_state.write_failed", "failed to initialize process run state", err)
+		return err
+	}
 	app.SetCredentialEndpoint(fmt.Sprintf("http://127.0.0.1:%d%s", actualPort, cfg.RootPath))
 
 	handler := app.Handler()
@@ -82,40 +153,65 @@ func main() {
 		})
 	}
 
-	httpServer := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second}
+	httpServer := &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ErrorLog:          observability.StandardLogger("http.server.error"),
+	}
+	serveErrors := make(chan error, 1)
 	go func() {
-		if err := httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Printf("HTTP server failed: %v", err)
+		err := httpServer.Serve(listener)
+		if errors.Is(err, http.ErrServerClosed) {
+			err = nil
 		}
+		serveErrors <- err
 	}()
 
 	launchURL := browserURL(cfg, actualPort)
-	fmt.Printf("## Ungit-Go started ##\n")
-	fmt.Printf("Ungit-Go %s listening at %s\n", app.Version(), launchURL)
-	fmt.Printf("Git %s\n", version.Version)
-	launchConfigured(cfg, launchURL)
+	listenURL := strings.SplitN(launchURL, "#", 2)[0]
+	observability.Info(processCtx, "process.ready", "Ungit-Go server is listening",
+		"url", listenURL, "git_version", gitVersion.Version, "port", actualPort)
+	launchConfigured(processCtx, cfg, launchURL)
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-	waitForStop(stop, activity, cfg.AutoShutdownTimeout)
+	reason, serveErr := waitForStop(stop, activity, cfg.AutoShutdownTimeout, serveErrors)
+	signal.Stop(stop)
+	observability.Info(processCtx, "process.shutdown.started", "Ungit-Go shutdown started", "reason", reason)
 
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer shutdownCancel()
-	_ = httpServer.Shutdown(shutdownCtx)
+	shutdownCtx, shutdownCancel := context.WithTimeout(processCtx, 5*time.Second)
+	shutdownErr := httpServer.Shutdown(shutdownCtx)
+	shutdownCancel()
+	if shutdownErr != nil {
+		observability.Error(processCtx, "process.shutdown.failed", "HTTP server shutdown failed", shutdownErr)
+		return shutdownErr
+	}
+	if serveErr != nil {
+		observability.Error(processCtx, "http.server.failed", "HTTP server exited unexpectedly", serveErr)
+		return serveErr
+	}
+	observability.Info(processCtx, "process.shutdown.completed", "Ungit-Go shutdown completed", "reason", reason)
+	return nil
 }
 
-func waitForStop(stop <-chan os.Signal, activity <-chan struct{}, timeoutMS *int) {
+func waitForStop(stop <-chan os.Signal, activity <-chan struct{}, timeoutMS *int, serveErrors <-chan error) (string, error) {
 	if timeoutMS == nil || *timeoutMS <= 0 {
-		<-stop
-		return
+		select {
+		case signal := <-stop:
+			return "signal:" + signal.String(), nil
+		case err := <-serveErrors:
+			return "http-server-exit", err
+		}
 	}
-	d := time.Duration(*timeoutMS) * time.Millisecond
-	timer := time.NewTimer(d)
+	duration := time.Duration(*timeoutMS) * time.Millisecond
+	timer := time.NewTimer(duration)
 	defer timer.Stop()
 	for {
 		select {
-		case <-stop:
-			return
+		case signal := <-stop:
+			return "signal:" + signal.String(), nil
+		case err := <-serveErrors:
+			return "http-server-exit", err
 		case <-activity:
 			if !timer.Stop() {
 				select {
@@ -123,25 +219,28 @@ func waitForStop(stop <-chan os.Signal, activity <-chan struct{}, timeoutMS *int
 				default:
 				}
 			}
-			timer.Reset(d)
+			timer.Reset(duration)
 		case <-timer.C:
-			log.Printf("Shutting down Ungit-Go due to inactivity. (autoShutdownTimeout is set to %d ms)", *timeoutMS)
-			return
+			return "inactivity-timeout", nil
 		}
 	}
 }
 
-func launchConfigured(cfg config.Config, launchURL string) {
+func launchConfigured(ctx context.Context, cfg config.Config, launchURL string) {
 	if cfg.LaunchCommand != nil && *cfg.LaunchCommand != "" {
 		command := strings.ReplaceAll(*cfg.LaunchCommand, "%U", launchURL)
 		go func() {
+			started := time.Now()
 			if err := browser.RunCommand(command); err != nil {
-				log.Printf("failed to exec custom launchCommand: %v", err)
+				observability.Error(ctx, "browser.command.failed", "custom launch command failed", err,
+					"duration_ms", time.Since(started).Milliseconds())
 				return
 			}
+			observability.Info(ctx, "browser.command.completed", "custom launch command completed",
+				"duration_ms", time.Since(started).Milliseconds())
 			if cfg.LaunchBrowser {
 				if err := browser.Open(launchURL); err != nil {
-					log.Printf("failed to launch browser: %v", err)
+					observability.Error(ctx, "browser.launch.failed", "failed to launch browser", err)
 				}
 			}
 		}()
@@ -149,9 +248,17 @@ func launchConfigured(cfg config.Config, launchURL string) {
 	}
 	if cfg.LaunchBrowser {
 		if err := browser.Open(launchURL); err != nil {
-			log.Printf("failed to launch browser: %v", err)
+			observability.Error(ctx, "browser.launch.failed", "failed to launch browser", err)
 		}
 	}
+}
+
+func currentWorkingDirectory() string {
+	workingDirectory, err := os.Getwd()
+	if err != nil {
+		return "<unavailable>"
+	}
+	return workingDirectory
 }
 
 func packageVersion() string {

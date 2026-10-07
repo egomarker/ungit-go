@@ -28,6 +28,8 @@ var programEvents = require('ungit-program-events');
 var navigation = require('ungit-navigation');
 var theme = require('ungit-theme');
 var adBlocker = require('just-detect-adblock');
+var clientLogging = require('./client-logging');
+ungit.reportClientLog = clientLogging.report;
 
 // Request animation frame polyfill and init tooltips
 (function () {
@@ -129,7 +131,24 @@ exports.start = function () {
   }
 
   window.addEventListener('error', function (event) {
+    clientLogging.report(
+      'error',
+      'browser.window_error',
+      event.message || event.error,
+      { filename: event.filename || '', line: event.lineno || 0, column: event.colno || 0 },
+      event.error && event.error.stack
+    );
     programEvents.dispatch({ event: 'raven-crash', error: event.error || event.message });
+  });
+  window.addEventListener('unhandledrejection', function (event) {
+    var reason = event.reason || 'Unhandled promise rejection';
+    clientLogging.report(
+      'error',
+      'browser.unhandled_rejection',
+      reason && reason.message ? reason.message : reason,
+      {},
+      reason && reason.stack
+    );
   });
 
   var prevTimestamp = 0;
