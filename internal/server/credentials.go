@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/egomarker/ungit-go/internal/observability"
 )
 
 func (s *Server) getCredentials(w http.ResponseWriter, r *http.Request) {
@@ -19,20 +21,29 @@ func (s *Server) getCredentials(w http.ResponseWriter, r *http.Request) {
 	}
 	ip := net.ParseIP(host)
 	if ip == nil || !ip.IsLoopback() {
+		observability.Warn(r.Context(), "credentials.http.rejected", "credential helper request rejected from non-loopback address",
+			"remote_ip", host)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"errorCode": "request-from-unathorized-location"})
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
 	defer cancel()
-	payload, err := s.realtime.requestCredentials(ctx, r.URL.Query().Get("socketId"), r.URL.Query().Get("remote"))
+	remote := r.URL.Query().Get("remote")
+	socketID := r.URL.Query().Get("socketId")
+	payload, err := s.realtime.requestCredentials(ctx, socketID, remote)
 	if err != nil {
 		code := "socket-unavailable"
 		if ctx.Err() != nil {
 			code = "credential-request-cancelled"
 		}
+		observability.Error(ctx, "credentials.http.failed", "credential helper request failed", err,
+			"error_code", code, "remote", observability.RedactURL(remote), "socket_id", safeSocketID(socketID))
 		writeJSON(w, http.StatusBadRequest, map[string]string{"errorCode": code})
 		return
 	}
+	observability.Info(ctx, "credentials.http.completed", "credential helper request completed",
+		"remote", observability.RedactURL(remote), "socket_id", safeSocketID(socketID),
+		"username_present", payload.Username != "", "password_present", payload.Password != "")
 	writeJSON(w, http.StatusOK, payload)
 }
 
@@ -56,22 +67,36 @@ func socketIDString(value any) string {
 
 type jsonNumberStringer interface{ String() string }
 
-func (s *Server) requireSocket(w http.ResponseWriter, value any) (string, bool) {
+func (s *Server) requireSocket(ctx context.Context, w http.ResponseWriter, value any) (string, bool) {
 	id := socketIDString(value)
 	if id == "ignore" {
 		return id, true
 	}
 	if id == "" || s.realtime.get(id) == nil {
+		observability.Warn(ctx, "credentials.socket.invalid", "credential operation rejected for invalid socket",
+			"requested_socket_id", safeSocketID(id))
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "No such socket: " + id, "errorCode": "invalid-socket-id"})
 		return id, false
 	}
 	return id, true
 }
 
-func (s *Server) credentialArgs(socketID any, remote string) []string {
+func safeSocketID(value string) string {
+	if value == "ignore" {
+		return value
+	}
+	if value = acceptedSocketID(value); value != "" {
+		return value
+	}
+	return "<invalid>"
+}
+
+func (s *Server) credentialArgs(ctx context.Context, socketID any, remote string) []string {
 	id := socketIDString(socketID)
 	executable, err := os.Executable()
 	if err != nil {
+		observability.Error(ctx, "credentials.helper.resolve_failed", "failed to resolve credential helper executable", err,
+			"remote", observability.RedactURL(remote))
 		return nil
 	}
 	if runtime.GOOS == "windows" {

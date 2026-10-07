@@ -66,6 +66,31 @@ func TestParseRCPrecedenceAndCLIConfigOnly(t *testing.T) {
 	}
 }
 
+func TestLoggingDefaultsAndValidation(t *testing.T) {
+	cfg, err := Parse([]string{"--cliconfigonly"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.LogLevel != "info" || !cfg.LogRESTRequests || !cfg.LogGitCommands || cfg.LogGitOutput {
+		t.Fatalf("logging defaults mismatch: %+v", cfg)
+	}
+	if cfg.LogMaxSizeMB != 50 || cfg.LogMaxBackups != 10 || cfg.LogMaxAgeDays != 30 || !cfg.LogCompress {
+		t.Fatalf("rotation defaults mismatch: %+v", cfg)
+	}
+	cfg, err = Parse([]string{"--cliconfigonly", "--logLevel=trace", "--logMaxSizeMB=5", "--logMaxBackups=2", "--logMaxAgeDays=7", "--no-logCompress"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.LogLevel != "trace" || cfg.LogMaxSizeMB != 5 || cfg.LogMaxBackups != 2 || cfg.LogMaxAgeDays != 7 || cfg.LogCompress {
+		t.Fatalf("logging overrides mismatch: %+v", cfg)
+	}
+	for _, args := range [][]string{{"--logLevel=nope"}, {"--logMaxSizeMB=0"}, {"--logMaxBackups=0"}, {"--logMaxAgeDays=-1"}} {
+		if _, err := Parse(append([]string{"--cliconfigonly"}, args...)); err == nil {
+			t.Fatalf("expected invalid logging config for %v", args)
+		}
+	}
+}
+
 func TestParseAdditionalNodeOptions(t *testing.T) {
 	cfg, err := Parse([]string{
 		`--allowedIPs=["127.0.0.1","::1"]`,

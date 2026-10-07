@@ -10,7 +10,10 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
+
+	"github.com/egomarker/ungit-go/internal/observability"
 )
 
 type inotifyKind uint8
@@ -27,14 +30,21 @@ type inotifyDir struct {
 
 func (s *Server) watchRepository(ctx context.Context, c *realtimeClient, repoPath string, ready chan<- struct{}) {
 	started, err := s.watchRepositoryInotify(ctx, c, repoPath, ready)
-	if !started && err != nil && ctx.Err() == nil {
+	if err != nil && ctx.Err() == nil {
+		if started {
+			observability.Error(ctx, "watch.inotify.failed", "inotify repository watcher failed after startup", err, "repository", repoPath)
+			return
+		}
 		// inotify can be unavailable or exceed the user's watch limit. Preserve
 		// correctness with the portable M4 poller in that case.
+		observability.Warn(ctx, "watch.inotify.fallback", "inotify unavailable; falling back to polling",
+			append([]any{"repository", repoPath}, observability.ErrorFields(err)...)...)
 		s.watchRepositoryPolling(ctx, c, repoPath, ready)
 	}
 }
 
 func (s *Server) watchRepositoryInotify(ctx context.Context, c *realtimeClient, repoPath string, ready chan<- struct{}) (bool, error) {
+	startedAt := time.Now()
 	fd, err := syscall.InotifyInit1(syscall.IN_CLOEXEC)
 	if err != nil {
 		return false, err
@@ -45,6 +55,8 @@ func (s *Server) watchRepositoryInotify(ctx context.Context, c *realtimeClient, 
 	defer func() {
 		closeFD()
 		close(closed)
+		observability.Info(ctx, "watch.inotify.stopped", "inotify repository watcher stopped",
+			"repository", repoPath, "duration_ms", time.Since(startedAt).Milliseconds(), "reason", ctx.Err())
 	}()
 	go func() {
 		select {
@@ -110,16 +122,26 @@ func (s *Server) watchRepositoryInotify(ctx context.Context, c *realtimeClient, 
 		}
 	}
 
-	workFP, _ := s.worktreeFingerprint(ctx, repoPath)
-	gitFP, _ := s.gitStateFingerprint(ctx, repoPath)
+	workFP, workErr := s.worktreeFingerprint(ctx, repoPath)
+	if workErr != nil {
+		observability.Error(ctx, "watch.fingerprint.failed", "initial working tree fingerprint failed", workErr, "repository", repoPath)
+	}
+	gitFP, gitErr := s.gitStateFingerprint(ctx, repoPath)
+	if gitErr != nil {
+		observability.Error(ctx, "watch.fingerprint.failed", "initial Git state fingerprint failed", gitErr, "repository", repoPath)
+	}
 	workDebounce := newEventDebouncer(func() {
+		observability.Info(ctx, "watch.working_tree.changed", "working tree change detected", "repository", repoPath)
 		s.realtime.emit(c, "working-tree-changed", map[string]string{"repository": repoPath})
 	})
 	gitDebounce := newEventDebouncer(func() {
+		observability.Info(ctx, "watch.git_directory.changed", "Git directory change detected", "repository", repoPath)
 		s.realtime.emit(c, "git-directory-changed", map[string]string{"repository": repoPath})
 	})
 	defer workDebounce.Stop()
 	defer gitDebounce.Stop()
+	observability.Info(ctx, "watch.inotify.started", "inotify repository watcher started",
+		"repository", repoPath, "watched_directories", len(dirs))
 	close(ready)
 
 	buf := make([]byte, 64*1024)
@@ -154,7 +176,10 @@ func (s *Server) watchRepositoryInotify(ctx context.Context, c *realtimeClient, 
 				}
 				if ev.Mask&syscall.IN_ISDIR != 0 && ev.Mask&(syscall.IN_CREATE|syscall.IN_MOVED_TO) != 0 {
 					if base.kind != watchWork || filepath.Base(full) != ".git" {
-						_ = addTree(full, base.kind, base.kind == watchWork)
+						if addErr := addTree(full, base.kind, base.kind == watchWork); addErr != nil {
+							observability.Error(ctx, "watch.inotify.add_tree_failed", "failed to add new directory to inotify watcher", addErr,
+								"repository", repoPath, "directory_summary", observability.RedactFreeText(full))
+						}
 					}
 				}
 			}
@@ -162,15 +187,25 @@ func (s *Server) watchRepositoryInotify(ctx context.Context, c *realtimeClient, 
 		}
 
 		if workDirty {
-			if next, fpErr := s.worktreeFingerprint(ctx, repoPath); fpErr == nil && next != workFP {
-				workFP = next
-				workDebounce.Trigger()
+			if next, fpErr := s.worktreeFingerprint(ctx, repoPath); fpErr == nil {
+				if next != workFP {
+					workFP = next
+					workDebounce.Trigger()
+				}
+			} else {
+				observability.Error(ctx, "watch.fingerprint.failed", "working tree fingerprint failed after inotify event", fpErr,
+					"repository", repoPath)
 			}
 		}
 		if gitDirty {
-			if next, fpErr := s.gitStateFingerprint(ctx, repoPath); fpErr == nil && next != gitFP {
-				gitFP = next
-				gitDebounce.Trigger()
+			if next, fpErr := s.gitStateFingerprint(ctx, repoPath); fpErr == nil {
+				if next != gitFP {
+					gitFP = next
+					gitDebounce.Trigger()
+				}
+			} else {
+				observability.Error(ctx, "watch.fingerprint.failed", "Git state fingerprint failed after inotify event", fpErr,
+					"repository", repoPath)
 			}
 		}
 	}

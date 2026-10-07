@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"math/rand/v2"
 	"os"
 	"os/exec"
@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/egomarker/ungit-go/internal/config"
+	"github.com/egomarker/ungit-go/internal/observability"
 )
 
 const DefaultTimeout = 2 * time.Minute
@@ -110,7 +111,7 @@ func (r *Runner) Run(ctx context.Context, c Command) (Result, error) {
 		}
 	}
 	args := append(append([]string{}, baseConfigArgs...), filtered...)
-	return r.runRetry(ctx, c, args, r.cfg.LockConflictRetryCount)
+	return r.runRetry(ctx, c, args, r.cfg.LockConflictRetryCount, observability.NewID("gitop"), 1)
 }
 
 func (r *Runner) RunText(ctx context.Context, repoPath string, args ...string) (string, error) {
@@ -118,43 +119,77 @@ func (r *Runner) RunText(ctx context.Context, repoPath string, args ...string) (
 	return string(res.Stdout), err
 }
 
-func (r *Runner) runRetry(ctx context.Context, c Command, args []string, retries int) (Result, error) {
-	res, err := r.runOnce(ctx, c, args)
+func (r *Runner) runRetry(ctx context.Context, c Command, args []string, retries int, operationID string, attempt int) (Result, error) {
+	res, err := r.runOnce(ctx, c, args, operationID, attempt)
 	if err == nil || retries <= 0 || !isRetryable(err) {
 		return res, err
 	}
-	if r.cfg.LogGitCommands {
-		log.Printf("retrying git commands after lock conflict (remaining=%d)", retries)
-	}
-	timer := time.NewTimer(r.randSleepForTest())
+	delay := r.randSleepForTest()
+	fields := append(gitCommandFields(c, args, operationID, ""),
+		"attempt", attempt,
+		"next_attempt", attempt+1,
+		"remaining_retries", retries,
+		"retry_delay_ms", delay.Milliseconds(),
+	)
+	observability.Warn(ctx, "git.command.retry", "retrying Git command after lock conflict", fields...)
+	timer := time.NewTimer(delay)
 	defer timer.Stop()
 	select {
 	case <-ctx.Done():
+		observability.Error(ctx, "git.command.retry_cancelled", "Git command retry cancelled", ctx.Err(),
+			"git_operation_id", operationID,
+			"attempt", attempt,
+			"repository", c.RepoPath)
 		return res, ctx.Err()
 	case <-timer.C:
-		return r.runRetry(ctx, c, args, retries-1)
+		return r.runRetry(ctx, c, args, retries-1, operationID, attempt+1)
 	}
 }
 
-func (r *Runner) runOnce(ctx context.Context, c Command, args []string) (Result, error) {
+func (r *Runner) runOnce(ctx context.Context, c Command, args []string, operationID string, attempt int) (Result, error) {
+	commandID := observability.NewID("git")
+	queueStarted := time.Now()
+	commandFields := gitCommandFields(c, args, operationID, commandID)
+	if r.cfg.LogGitCommands {
+		observability.Info(ctx, "git.command.queued", "Git command queued",
+			append(commandFields, "attempt", attempt, "queue_depth", len(r.sem))...)
+	}
 	select {
 	case r.sem <- struct{}{}:
 		defer func() { <-r.sem }()
 	case <-ctx.Done():
+		observability.Error(ctx, "git.command.queue_cancelled", "Git command cancelled before execution", ctx.Err(),
+			append(commandFields,
+				"attempt", attempt,
+				"queue_wait_ms", time.Since(queueStarted).Milliseconds(),
+			)...)
 		return Result{}, ctx.Err()
 	}
 
 	cmdCtx, cancel := context.WithTimeout(ctx, c.Timeout)
 	defer cancel()
-
+	started := time.Now()
 	if r.cfg.LogGitCommands {
-		log.Printf("git executing: %s %s", c.RepoPath, strings.Join(args, " "))
+		observability.Info(ctx, "git.command.started", "Git command started",
+			append(commandFields,
+				"attempt", attempt,
+				"queue_wait_ms", started.Sub(queueStarted).Milliseconds(),
+				"timeout_ms", c.Timeout.Milliseconds(),
+				"stdin_bytes", len(c.Stdin),
+				"active_commands", len(r.sem),
+			)...)
 	}
 
 	cmd := exec.CommandContext(cmdCtx, Executable(r.cfg.GitBinPath), args...)
 	cmd.Dir = c.RepoPath
 	cmd.Env = append(os.Environ(), "LC_ALL=C")
 	cmd.Env = append(cmd.Env, c.Env...)
+	if requestID := observability.RequestID(ctx); requestID != "" {
+		cmd.Env = append(cmd.Env, "UNGIT_GO_REQUEST_ID="+requestID)
+	}
+	if actionID := observability.ActionID(ctx); actionID != "" {
+		cmd.Env = append(cmd.Env, "UNGIT_GO_ACTION_ID="+actionID)
+	}
 	if len(c.Stdin) > 0 {
 		cmd.Stdin = bytes.NewReader(c.Stdin)
 	}
@@ -168,26 +203,111 @@ func (r *Runner) runOnce(ctx context.Context, c Command, args []string) (Result,
 
 	err := cmd.Run()
 	result := Result{Stdout: stdout.Bytes(), Stderr: stderr.Bytes(), ExitCode: exitCode(err)}
-
-	if r.cfg.LogGitCommands || r.cfg.LogGitOutput {
-		log.Printf("git result (first 400 bytes): %s\nstderr=%s\nstdout=%s", strings.Join(args, " "), trim400(stderr.String()), trim400(stdout.String()))
+	timedOut := errors.Is(cmdCtx.Err(), context.DeadlineExceeded)
+	allowedError := result.ExitCode == 1 && c.AllowError
+	resultFields := append(commandFields,
+		"attempt", attempt,
+		"duration_ms", time.Since(started).Milliseconds(),
+		"exit_code", result.ExitCode,
+		"timed_out", timedOut,
+		"allowed_error", allowedError,
+		"stdout_bytes", len(result.Stdout),
+		"stderr_bytes", len(result.Stderr),
+	)
+	if r.cfg.LogGitOutput {
+		resultFields = append(resultFields,
+			"stdout_summary", observability.RedactFreeText(stdout.String()),
+			"stderr_summary", observability.RedactFreeText(stderr.String()),
+		)
 	}
 
-	if err == nil || (result.ExitCode == 1 && c.AllowError) {
+	if err == nil || allowedError {
+		if r.cfg.LogGitCommands {
+			observability.Info(ctx, "git.command.completed", "Git command completed", resultFields...)
+		}
 		return result, nil
 	}
-	if errors.Is(cmdCtx.Err(), context.DeadlineExceeded) {
-		return result, &Error{
-			IsGitError: true, ErrorCode: "unknown", Command: strings.Join(args, " "), WorkingDirectory: c.RepoPath,
+	var resultErr error
+	if timedOut {
+		resultErr = &Error{
+			IsGitError: true, ErrorCode: "timeout", Command: strings.Join(args, " "), WorkingDirectory: c.RepoPath,
 			ErrorText: stderr.String(), Message: firstLine(stderr.String()), Stderr: stderr.String(), Stdout: stdout.String(),
 			StdoutLower: strings.ToLower(stdout.String()), StderrLower: strings.ToLower(stderr.String()),
 		}
+	} else {
+		var execErr *exec.Error
+		if errors.As(err, &execErr) {
+			resultErr = err
+		} else {
+			resultErr = NewError(c.RepoPath, args, stderr.String(), stdout.String())
+		}
 	}
-	var execErr *exec.Error
-	if errors.As(err, &execErr) {
-		return result, err
+	var gitErr *Error
+	if errors.As(resultErr, &gitErr) {
+		resultFields = append(resultFields, "error_code", gitErr.ErrorCode)
 	}
-	return result, NewError(c.RepoPath, args, stderr.String(), stdout.String())
+	observability.Log(ctx, slog.LevelError, "git.command.failed", "Git command failed",
+		append(resultFields,
+			"error_summary", observability.RedactFreeText(resultErr.Error()),
+			"error_type", fmt.Sprintf("%T", resultErr),
+		)...)
+	return result, resultErr
+}
+
+func gitCommandFields(c Command, args []string, operationID, commandID string) []any {
+	operation := "unknown"
+	operationIndex := len(args)
+	for index := 0; index < len(args); index++ {
+		if args[index] == "-c" && index+1 < len(args) {
+			index++
+			continue
+		}
+		if strings.HasPrefix(args[index], "-") {
+			continue
+		}
+		operation = args[index]
+		operationIndex = index
+		break
+	}
+	operation = safeGitOperation(operation)
+	optionCount := 0
+	positionalCount := 0
+	remaining := []string{}
+	if operationIndex < len(args) {
+		remaining = args[operationIndex+1:]
+	}
+	for _, arg := range remaining {
+		if strings.HasPrefix(arg, "-") {
+			optionCount++
+		} else {
+			positionalCount++
+		}
+	}
+	fields := []any{
+		"git_operation_id", operationID,
+		"repository", c.RepoPath,
+		"git_operation", operation,
+		"argument_count", len(c.Args),
+		"option_count", optionCount,
+		"positional_argument_count", positionalCount,
+	}
+	if commandID != "" {
+		fields = append(fields, "git_command_id", commandID)
+	}
+	return fields
+}
+
+func safeGitOperation(value string) string {
+	switch value {
+	case "add", "branch", "cat-file", "checkout", "cherry-pick", "clean", "clone", "commit",
+		"config", "diff", "diff-tree", "fetch", "for-each-ref", "init", "log", "ls-files",
+		"ls-remote", "merge", "mergetool", "mv", "name-rev", "pull", "push", "rebase",
+		"remote", "reset", "rev-list", "rev-parse", "revert", "rm", "show", "show-ref",
+		"stash", "status", "submodule", "symbolic-ref", "tag", "update-index":
+		return value
+	default:
+		return "other"
+	}
 }
 
 func exitCode(err error) int {
@@ -207,13 +327,6 @@ func exitCode(err error) int {
 		}
 	}
 	return -1
-}
-
-func trim400(s string) string {
-	if len(s) <= 400 {
-		return s
-	}
-	return s[:400]
 }
 
 func firstLine(s string) string {

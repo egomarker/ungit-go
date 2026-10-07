@@ -103,6 +103,26 @@ Example:
 
 `theme` accepts `system`, `dark`, or `light`. A theme selected in the UI is stored locally in the browser and takes precedence for that browser.
 
+### Operational logs
+
+Ungit-Go writes structured JSON diagnostics to `ungit-go.log` beside the resolved executable. Normal operational logs are not copied to stdout or stderr. The log contains correlation IDs for HTTP requests, user actions, realtime clients, repository watchers, and Git command attempts. Sensitive credential fields are redacted, while arbitrary browser and Git output is recorded only as a length and fingerprint.
+
+Rotation is enabled and bounded by default:
+
+```json
+{
+  "logLevel": "info",
+  "logMaxSizeMB": 50,
+  "logMaxBackups": 10,
+  "logMaxAgeDays": 30,
+  "logCompress": true
+}
+```
+
+`logLevel` accepts `trace`, `debug`, `info`, `warn`, or `error`. Use `logDirectory` to override the executable-relative location. `logGitCommands` and `logRESTRequests` control routine lifecycle events; failures remain diagnosed. `logGitOutput` adds only redacted output fingerprints, never repository output itself.
+
+Ungit-Go also maintains `ungit-go-run-state.json` in the log directory so the next launch can report a previous run that did not complete a clean shutdown.
+
 ### Authentication
 
 Ungit-compatible username/password authentication is available when exposing the server beyond the default localhost-only setup. Example:

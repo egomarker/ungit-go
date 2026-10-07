@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -36,6 +35,7 @@ type Server struct {
 	credentialEndpoint string
 	testTempMu         sync.Mutex
 	testTempDirs       []string
+	metrics            serverMetrics
 }
 
 func New(cfg config.Config) (*Server, error) {
@@ -82,6 +82,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/userconfig", s.getUserConfig)
 	mux.HandleFunc("POST /api/userconfig", s.postUserConfig)
 	mux.HandleFunc("GET /api/credentials", s.getCredentials)
+	mux.HandleFunc("POST /api/client-log", s.postClientLog)
 	mux.HandleFunc("GET /realtime/connect", s.realtime.handleConnect)
 	mux.HandleFunc("POST /realtime/emit", s.realtime.handleEmit)
 	mux.HandleFunc("GET /serverdata.js", s.serverData)
@@ -106,9 +107,11 @@ func (s *Server) routes() http.Handler {
 	var h http.Handler = mux
 	h = s.authMiddleware(h)
 	h = noCache(h)
-	h = logging(s.cfg.LogRESTRequests, h)
 	h = allowedIPMiddleware(s.cfg.AllowedIPs, h)
 	h = rootPathMiddleware(s.cfg.RootPath, h)
+	// Correlation IDs and panic recovery are always installed. The
+	// logRESTRequests option only controls routine lifecycle events.
+	h = s.instrumentHTTP(h)
 	return h
 }
 
@@ -158,16 +161,6 @@ func noCache(next http.Handler) http.Handler {
 	})
 }
 
-func logging(enabled bool, next http.Handler) http.Handler {
-	if !enabled {
-		return next
-	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s", r.Method, r.URL.Path)
-		next.ServeHTTP(w, r)
-	})
-}
-
 func buildIndex(rootPath string) ([]byte, error) {
 	data, err := fs.ReadFile(ungitgoassets.FS, "public/index.html")
 	if err != nil {
@@ -202,11 +195,13 @@ func packageVersion() (string, error) {
 func (s *Server) serverData(w http.ResponseWriter, r *http.Request) {
 	raw, err := json.Marshal(s.cfg)
 	if err != nil {
+		logAPIError(r.Context(), "api.server_data.encode_failed", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	var visible map[string]any
 	if err := json.Unmarshal(raw, &visible); err != nil {
+		logAPIError(r.Context(), "api.server_data.decode_failed", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -221,6 +216,7 @@ func (s *Server) serverData(w http.ResponseWriter, r *http.Request) {
 	visible["isGitOptionalLocks"] = gitVersion == "2.15.0"
 	cfgJSON, err := json.Marshal(visible)
 	if err != nil {
+		logAPIError(r.Context(), "api.server_data.render_failed", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -269,11 +265,13 @@ func (s *Server) getUserConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		logAPIError(r.Context(), "api.user_config.read_failed", err)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	var value any
 	if err := json.Unmarshal(data, &value); err != nil {
+		logAPIError(r.Context(), "api.user_config.decode_failed", err)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
@@ -285,6 +283,7 @@ func (s *Server) postUserConfig(w http.ResponseWriter, r *http.Request) {
 	var value any
 	dec := json.NewDecoder(r.Body)
 	if err := dec.Decode(&value); err != nil {
+		logAPIError(r.Context(), "api.user_config.request_decode_failed", err)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
@@ -293,6 +292,7 @@ func (s *Server) postUserConfig(w http.ResponseWriter, r *http.Request) {
 		err = os.WriteFile(userConfigPath(), data, 0o644)
 	}
 	if err != nil {
+		logAPIError(r.Context(), "api.user_config.write_failed", err)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
