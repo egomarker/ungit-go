@@ -44,6 +44,38 @@ func TestRunnerLogDoesNotLeakGitArgumentsOrOutput(t *testing.T) {
 	}
 }
 
+func TestRunnerCanLogSanitizedFailureStderr(t *testing.T) {
+	directory := t.TempDir()
+	logging, err := observability.Start(observability.Options{
+		Directory: &directory, Level: "trace", MaxSizeMB: 1, MaxBackups: 1, Version: "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Default()
+	cfg.LogGitOutput = true
+	runner := NewRunner(cfg)
+	if _, err := runner.Run(context.Background(), Command{RepoPath: directory, Args: []string{"init", "--quiet"}}); err != nil {
+		t.Fatal(err)
+	}
+	const diagnostic = "missing-diagnostic-ref"
+	_, _ = runner.Run(context.Background(), Command{RepoPath: directory, Args: []string{"rev-parse", diagnostic}})
+	if err := logging.Close(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(directory, observability.LogFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	if !strings.Contains(text, diagnostic) || !strings.Contains(text, `"stderr"`) {
+		t.Fatalf("opt-in Git log is missing sanitized stderr: %s", text)
+	}
+	if strings.Contains(text, `"stdout"`) || strings.Contains(text, "stdout_summary") {
+		t.Fatalf("opt-in Git log unexpectedly contains stdout: %s", text)
+	}
+}
+
 func TestWatcherCommandsSuppressRoutineLifecycleButKeepFailures(t *testing.T) {
 	directory := t.TempDir()
 	logging, err := observability.Start(observability.Options{

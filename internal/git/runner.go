@@ -20,7 +20,10 @@ import (
 	"github.com/egomarker/ungit-go/internal/observability"
 )
 
-const DefaultTimeout = 2 * time.Minute
+const (
+	DefaultTimeout          = 2 * time.Minute
+	maxLoggedGitStderrBytes = 16 << 10
+)
 
 var baseConfigArgs = []string{
 	"-c", "color.ui=false",
@@ -218,13 +221,6 @@ func (r *Runner) runOnce(ctx context.Context, c Command, args []string, operatio
 		"stdout_bytes", len(result.Stdout),
 		"stderr_bytes", len(result.Stderr),
 	)
-	if r.cfg.LogGitOutput {
-		resultFields = append(resultFields,
-			"stdout_summary", observability.RedactFreeText(stdout.String()),
-			"stderr_summary", observability.RedactFreeText(stderr.String()),
-		)
-	}
-
 	if err == nil || allowedError {
 		if logRoutineLifecycle {
 			observability.Info(ctx, "git.command.completed", "Git command completed", resultFields...)
@@ -245,6 +241,11 @@ func (r *Runner) runOnce(ctx context.Context, c Command, args []string, operatio
 		} else {
 			resultErr = NewError(c.RepoPath, args, stderr.String(), stdout.String())
 		}
+	}
+	if r.cfg.LogGitOutput && strings.TrimSpace(stderr.String()) != "" {
+		resultFields = append(resultFields,
+			"stderr", observability.SanitizeDiagnostic(stderr.String(), maxLoggedGitStderrBytes),
+		)
 	}
 	var gitErr *Error
 	if errors.As(resultErr, &gitErr) {
