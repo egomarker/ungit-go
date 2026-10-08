@@ -105,13 +105,14 @@ Example:
 
 ### Operational logs
 
-Ungit-Go writes structured JSON diagnostics to `ungit-go.log` beside the resolved executable. Normal operational logs are not copied to stdout or stderr. The log contains correlation IDs for HTTP requests, user actions, realtime clients, repository watchers, and Git command attempts. Sensitive credential fields are redacted, while arbitrary browser and Git output is recorded only as a length and fingerprint.
+Ungit-Go writes structured JSON diagnostics to `ungit-go.log` beside the resolved executable. Normal operational logs are not copied to stdout or stderr. The log contains correlation IDs for HTTP requests, user actions, realtime clients, repository watchers, and Git command attempts. Sensitive credential fields are redacted, while arbitrary browser output is recorded only as a length and fingerprint. Git stderr is omitted by default.
 
 Rotation is enabled and bounded by default:
 
 ```json
 {
   "logLevel": "info",
+  "logGitOutput": false,
   "logMaxSizeMB": 50,
   "logMaxBackups": 10,
   "logMaxAgeDays": 30,
@@ -119,7 +120,7 @@ Rotation is enabled and bounded by default:
 }
 ```
 
-`logLevel` accepts `trace`, `debug`, `info`, `warn`, or `error`. Use `logDirectory` to override the executable-relative location. `logGitCommands` and `logRESTRequests` control routine lifecycle events; failures remain diagnosed. `logGitOutput` adds only redacted output fingerprints, never repository output itself.
+`logLevel` accepts `trace`, `debug`, `info`, `warn`, or `error`. Use `logDirectory` to override the executable-relative location. `logGitCommands` and `logRESTRequests` control routine lifecycle events; failures remain diagnosed. Enable `logGitOutput` (or pass `--logGitOutput`) to include up to 16 KiB of line-preserving stderr for failed Git commands. This diagnostic text is sanitized for credential-bearing URLs, authorization headers, named secrets, common token formats, private keys, terminal escapes, and control characters. Successful command output and stdout remain excluded. Sanitization reduces exposure but cannot prove arbitrary hook or remote output is secret-free, so the option is disabled by default.
 
 Ungit-Go also maintains `ungit-go-run-state.json` in the log directory so the next launch can report a previous run that did not complete a clean shutdown.
 

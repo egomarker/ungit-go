@@ -77,11 +77,11 @@ func TestLoggingDefaultsAndValidation(t *testing.T) {
 	if cfg.LogMaxSizeMB != 50 || cfg.LogMaxBackups != 10 || cfg.LogMaxAgeDays != 30 || !cfg.LogCompress {
 		t.Fatalf("rotation defaults mismatch: %+v", cfg)
 	}
-	cfg, err = Parse([]string{"--cliconfigonly", "--logLevel=trace", "--logMaxSizeMB=5", "--logMaxBackups=2", "--logMaxAgeDays=7", "--no-logCompress"})
+	cfg, err = Parse([]string{"--cliconfigonly", "--logLevel=trace", "--logGitOutput", "--logMaxSizeMB=5", "--logMaxBackups=2", "--logMaxAgeDays=7", "--no-logCompress"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.LogLevel != "trace" || cfg.LogMaxSizeMB != 5 || cfg.LogMaxBackups != 2 || cfg.LogMaxAgeDays != 7 || cfg.LogCompress {
+	if cfg.LogLevel != "trace" || !cfg.LogGitOutput || cfg.LogMaxSizeMB != 5 || cfg.LogMaxBackups != 2 || cfg.LogMaxAgeDays != 7 || cfg.LogCompress {
 		t.Fatalf("logging overrides mismatch: %+v", cfg)
 	}
 	for _, args := range [][]string{{"--logLevel=nope"}, {"--logMaxSizeMB=0"}, {"--logMaxBackups=0"}, {"--logMaxAgeDays=-1"}} {

@@ -423,10 +423,16 @@ func RuntimeFields() []any {
 }
 
 var (
-	urlUserInfoPattern = regexp.MustCompile(`(?i)([a-z][a-z0-9+.-]*://)([^/@\s]+)@`)
-	scpUserInfoPattern = regexp.MustCompile(`(?i)([^\s/@:]+):([^\s/@]+)@`)
-	secretValuePattern = regexp.MustCompile(`(?i)(password|passwd|token|access_token|api_key|authorization|cookie|secret)=([^&\s]+)`)
-	bearerPattern      = regexp.MustCompile(`(?i)(bearer\s+)[A-Za-z0-9._~+\-/=]+`)
+	urlUserInfoPattern         = regexp.MustCompile(`(?i)([a-z][a-z0-9+.-]*://)([^/@\s]+)@`)
+	scpUserInfoPattern         = regexp.MustCompile(`(?i)([^\s/@:]+):([^\s/@]+)@`)
+	secretValuePattern         = regexp.MustCompile(`(?i)(password|passwd|token|access_token|api_key|authorization|cookie|secret)=([^&\s]+)`)
+	bearerPattern              = regexp.MustCompile(`(?i)(bearer\s+)[A-Za-z0-9._~+\-/=]+`)
+	authorizationHeaderPattern = regexp.MustCompile(`(?im)(authorization\s*:\s*)[^\r\n]+`)
+	sensitiveDiagnosticPattern = regexp.MustCompile(`(?im)^(\s*(?:password|passwd|token|access_token|api_key|cookie|secret)\s*[:=]\s*).*$`)
+	knownTokenPattern          = regexp.MustCompile(`(?i)\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b`)
+	jwtPattern                 = regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b`)
+	privateKeyPattern          = regexp.MustCompile(`(?s)-----BEGIN [^-\r\n]*PRIVATE KEY-----.*?-----END [^-\r\n]*PRIVATE KEY-----`)
+	ansiEscapePattern          = regexp.MustCompile(`\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))`)
 )
 
 func RedactString(value string) string {
@@ -440,6 +446,46 @@ func RedactString(value string) string {
 func Fingerprint(value string) string {
 	sum := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(sum[:8])
+}
+
+// SanitizeDiagnostic preserves useful command diagnostics while removing
+// recognizable credential material, terminal escapes, and control characters.
+// The returned value is bounded to limit log amplification. It is intended only
+// for explicitly enabled, trusted local diagnostics; arbitrary text cannot be
+// proven secret-free.
+func SanitizeDiagnostic(value string, limit int) string {
+	value = strings.ReplaceAll(value, "\r\n", "\n")
+	value = strings.ReplaceAll(value, "\r", "\n")
+	value = ansiEscapePattern.ReplaceAllString(value, "")
+	value = privateKeyPattern.ReplaceAllString(value, "<redacted-private-key>")
+	value = authorizationHeaderPattern.ReplaceAllString(value, `${1}<redacted>`)
+	value = sensitiveDiagnosticPattern.ReplaceAllString(value, `${1}<redacted>`)
+	value = knownTokenPattern.ReplaceAllString(value, "<redacted-token>")
+	value = jwtPattern.ReplaceAllString(value, "<redacted-token>")
+	value = RedactString(value)
+	value = strings.Map(func(char rune) rune {
+		switch char {
+		case '\n', '\t':
+			return char
+		}
+		if char < 0x20 || char == 0x7f {
+			return '�'
+		}
+		return char
+	}, value)
+	value = strings.TrimSpace(value)
+	if limit <= 0 || len(value) <= limit {
+		return value
+	}
+	const suffix = "\n<truncated>"
+	end := limit - len(suffix)
+	if end <= 0 {
+		return suffix[:limit]
+	}
+	for end > 0 && end < len(value) && (value[end]&0xc0) == 0x80 {
+		end--
+	}
+	return value[:end] + suffix
 }
 
 func RedactFreeText(value string) string {

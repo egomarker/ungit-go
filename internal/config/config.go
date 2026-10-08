@@ -167,7 +167,7 @@ func Parse(args []string) (Config, error) {
 	fs.StringVar(&usersJSON, "users", "", "JSON username/password map")
 	fs.BoolVar(&cfg.LogRESTRequests, "logRESTRequests", cfg.LogRESTRequests, "log REST requests")
 	fs.BoolVar(&cfg.LogGitCommands, "logGitCommands", cfg.LogGitCommands, "log Git commands")
-	fs.BoolVar(&cfg.LogGitOutput, "logGitOutput", cfg.LogGitOutput, "log Git output")
+	fs.BoolVar(&cfg.LogGitOutput, "logGitOutput", cfg.LogGitOutput, "include sanitized stderr for failed Git commands")
 	fs.BoolVar(&cfg.Bugtracking, "bugtracking", cfg.Bugtracking, "enable anonymous bug reports")
 	fs.BoolVar(&cfg.ShowRebaseAndMergeOnlyOnRefs, "showRebaseAndMergeOnlyOnRefs", cfg.ShowRebaseAndMergeOnlyOnRefs, "show rebase/merge only on refs")
 	fs.IntVar(&cfg.MaxConcurrentGitOperations, "maxConcurrentGitOperations", cfg.MaxConcurrentGitOperations, "maximum concurrent Git operations")

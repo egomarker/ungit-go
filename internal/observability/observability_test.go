@@ -223,6 +223,38 @@ func TestErrorFieldsDoNotExposeArbitraryErrorText(t *testing.T) {
 	}
 }
 
+func TestSanitizeDiagnosticPreservesErrorsAndRedactsCredentials(t *testing.T) {
+	input := "\x1b[31mfatal: authentication failed for https://alice:url-secret@example.test/private.git?token=query-secret\x1b[0m\n" +
+		"Authorization: Basic basic-secret\npassword=line-secret\n" +
+		"remote token ghp_123456789012345678901234567890\n" +
+		"-----BEGIN PRIVATE KEY-----\nprivate-key-secret\n-----END PRIVATE KEY-----\n" +
+		"diagnostic detail\x00"
+	got := SanitizeDiagnostic(input, 16<<10)
+	for _, secret := range []string{"alice:url-secret", "query-secret", "basic-secret", "line-secret", "ghp_123456789012345678901234567890", "private-key-secret", "\x1b"} {
+		if strings.Contains(got, secret) {
+			t.Fatalf("sanitized diagnostic leaked %q: %s", secret, got)
+		}
+	}
+	for _, expected := range []string{"fatal: authentication failed", "private.git", "diagnostic detail", "<redacted-private-key>"} {
+		if !strings.Contains(got, expected) {
+			t.Fatalf("sanitized diagnostic is missing %q: %s", expected, got)
+		}
+	}
+	if strings.ContainsRune(got, '\x00') {
+		t.Fatalf("sanitized diagnostic retained a control character: %q", got)
+	}
+}
+
+func TestSanitizeDiagnosticIsBoundedWithoutSplittingUTF8(t *testing.T) {
+	got := SanitizeDiagnostic(strings.Repeat("é", 100), 64)
+	if len(got) > 64 {
+		t.Fatalf("sanitized diagnostic length=%d, want <=64", len(got))
+	}
+	if !strings.HasSuffix(got, "<truncated>") || strings.ToValidUTF8(got, "") != got {
+		t.Fatalf("unexpected truncated diagnostic: %q", got)
+	}
+}
+
 func TestRedactArgsHidesCredentialHelpers(t *testing.T) {
 	args := RedactArgs([]string{
 		"-c",
